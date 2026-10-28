@@ -1,0 +1,40 @@
+ # Node modules
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native builds & credentials
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+/ios
+/android
+
+# Metro bundler
+.metro-health-check*
+
+# Logs & Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Environment variables (ሚስጥራዊ ቁልፎች ካሉህ እንዳይካተቱ)
+.env*.local
+.env
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo

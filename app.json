@@ -51,7 +51,9 @@
         {
           "photosPermission": "Allow eyoTools to access your photos for OCR text extraction and image tools."
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font"
     ]
   }
 }
