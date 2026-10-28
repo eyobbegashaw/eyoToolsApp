@@ -64,7 +64,7 @@ export const SteganographyScreen: React.FC = () => {
   };
 
   const handleProcess = () => {
-    if (!imageUri) return;
+    if (!imageUri || isProcessing) return;
 
     setIsProcessing(true);
     setTimeout(() => {
@@ -241,8 +241,15 @@ export const SteganographyScreen: React.FC = () => {
 
           <TouchableOpacity
             onPress={handleProcess}
-            disabled={isProcessing}
-            style={[styles.processBtn, { backgroundColor: colors.primary }]}
+            accessibilityState={{ disabled: isProcessing }}
+            style={[
+              styles.processBtn,
+              {
+                backgroundColor: colors.primary,
+                opacity: isProcessing ? 0.7 : 1,
+                pointerEvents: isProcessing ? 'none' : 'auto',
+              },
+            ]}
           >
             {isProcessing ? (
               <ActivityIndicator size="small" color="#fff" />

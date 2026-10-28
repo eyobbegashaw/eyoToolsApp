@@ -16,11 +16,9 @@ import {
   FileCode,
   Upload,
   Download,
-  Trash2,
   CheckCircle2,
   Sparkles,
   RefreshCw,
-  Eye,
   Info,
 } from 'lucide-react-native';
 import {
@@ -45,13 +43,9 @@ export const FileConverterScreen: React.FC = () => {
   const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
 
   const getDirection = (): ConversionDirection => {
-    if (activeTab === 'doc') {
-      return isReversed ? 'pdf_to_doc' : 'doc_to_pdf';
-    } else if (activeTab === 'ppt') {
-      return isReversed ? 'pdf_to_ppt' : 'ppt_to_pdf';
-    } else {
-      return isReversed ? 'pdf_to_md' : 'md_to_pdf';
-    }
+    if (activeTab === 'doc') return isReversed ? 'pdf_to_doc' : 'doc_to_pdf';
+    if (activeTab === 'ppt') return 'ppt_to_pdf';
+    return 'md_to_pdf';
   };
 
   const getSourceBadge = (): string => {
@@ -63,12 +57,8 @@ export const FileConverterScreen: React.FC = () => {
         return 'PDF';
       case 'ppt_to_pdf':
         return 'POWERPOINT (PPTX)';
-      case 'pdf_to_ppt':
-        return 'PDF';
       case 'md_to_pdf':
         return 'MARKDOWN (.MD)';
-      case 'pdf_to_md':
-        return 'PDF';
     }
   };
 
@@ -81,13 +71,16 @@ export const FileConverterScreen: React.FC = () => {
         return 'WORD (DOCX)';
       case 'ppt_to_pdf':
         return 'PDF (LANDSCAPE)';
-      case 'pdf_to_ppt':
-        return 'POWERPOINT (PPTX)';
       case 'md_to_pdf':
         return 'PDF DOCUMENT';
-      case 'pdf_to_md':
-        return 'MARKDOWN (.MD)';
     }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFileName('');
+    setSelectedFileUri('');
+    setSelectedFileSize('');
+    setConversionResult(null);
   };
 
   const handlePickFile = async () => {
@@ -113,26 +106,41 @@ export const FileConverterScreen: React.FC = () => {
 
   const handleLoadSample = async () => {
     const dir = getDirection();
-    let sampleType: 'docx' | 'pptx' | 'pdf' | 'md' = 'docx';
+    let sampleType: 'docx' | 'pptx' | 'pdf' | 'md';
     if (dir === 'doc_to_pdf') sampleType = 'docx';
     else if (dir === 'ppt_to_pdf') sampleType = 'pptx';
     else if (dir === 'md_to_pdf') sampleType = 'md';
     else sampleType = 'pdf';
 
-    const sample = await DocumentConverterService.createSampleDocument(sampleType);
-    setSelectedFileName(sample.name);
-    setSelectedFileUri(sample.uri);
-    setSelectedFileSize((sample.size / 1024).toFixed(1) + ' KB');
-    setConversionResult(null);
+    try {
+      const sample = await DocumentConverterService.createSampleDocument(sampleType);
+      setSelectedFileName(sample.name);
+      setSelectedFileUri(sample.uri);
+      setSelectedFileSize((sample.size / 1024).toFixed(1) + ' KB');
+      setConversionResult(null);
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to create sample document');
+    }
   };
 
   const handleConvert = async () => {
-    if (!selectedFileUri) return;
+    if (!selectedFileUri || isConverting) return;
 
     setIsConverting(true);
     const dir = getDirection();
 
     try {
+      const extension = selectedFileName.split('.').pop()?.toLowerCase();
+      const expectedExtension = {
+        doc_to_pdf: 'docx',
+        pdf_to_doc: 'pdf',
+        ppt_to_pdf: 'pptx',
+        md_to_pdf: 'md',
+      }[dir];
+      if (extension !== expectedExtension) {
+        throw new Error(`Select a .${expectedExtension} file for this conversion.`);
+      }
+
       let result: ConversionResult;
       if (dir === 'doc_to_pdf') {
         result = await DocumentConverterService.convertDocxToPdf(
@@ -149,18 +157,8 @@ export const FileConverterScreen: React.FC = () => {
           selectedFileUri,
           selectedFileName
         );
-      } else if (dir === 'pdf_to_ppt') {
-        result = await DocumentConverterService.convertPdfToPptx(
-          selectedFileUri,
-          selectedFileName
-        );
       } else if (dir === 'md_to_pdf') {
-        result = await DocumentConverterService.convertMdToPdf(
-          '# Converted Document\n\nGenerated via eyoTools Mobile',
-          selectedFileName
-        );
-      } else {
-        result = await DocumentConverterService.convertPdfToMd(
+        result = await DocumentConverterService.convertMdFileToPdf(
           selectedFileUri,
           selectedFileName
         );
@@ -184,7 +182,10 @@ export const FileConverterScreen: React.FC = () => {
 
   const handleShareResult = async () => {
     if (!conversionResult) return;
-    await DocumentConverterService.shareResult(conversionResult.outputUri);
+    await DocumentConverterService.shareResult(
+      conversionResult.outputUri,
+      conversionResult.outputFileName
+    );
   };
 
   return (
@@ -214,12 +215,12 @@ export const FileConverterScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Tab switchers: Word <-> PDF | PPT <-> PDF | MD <-> PDF */}
+        {/* Tab switchers: Word <-> PDF | PPTX -> PDF | MD -> PDF */}
         <View style={[styles.tabsRow, { backgroundColor: colors.cardSecondary }]}>
           <TouchableOpacity
             onPress={() => {
               setActiveTab('doc');
-              setConversionResult(null);
+              clearSelectedFile();
             }}
             style={[
               styles.tabBtn,
@@ -240,7 +241,7 @@ export const FileConverterScreen: React.FC = () => {
           <TouchableOpacity
             onPress={() => {
               setActiveTab('ppt');
-              setConversionResult(null);
+              clearSelectedFile();
             }}
             style={[
               styles.tabBtn,
@@ -254,14 +255,14 @@ export const FileConverterScreen: React.FC = () => {
                 { color: activeTab === 'ppt' ? '#fff' : colors.textSecondary },
               ]}
             >
-              PPT ↔ PDF
+              PPTX → PDF
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => {
               setActiveTab('md');
-              setConversionResult(null);
+              clearSelectedFile();
             }}
             style={[
               styles.tabBtn,
@@ -275,7 +276,7 @@ export const FileConverterScreen: React.FC = () => {
                 { color: activeTab === 'md' ? '#fff' : colors.textSecondary },
               ]}
             >
-              MD ↔ PDF
+              MD → PDF
             </Text>
           </TouchableOpacity>
         </View>
@@ -292,16 +293,18 @@ export const FileConverterScreen: React.FC = () => {
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => {
-              setIsReversed((prev) => !prev);
-              setConversionResult(null);
-            }}
-            style={[styles.swapBtn, { backgroundColor: colors.card }]}
-          >
-            <RefreshCw size={13} color={colors.primary} style={{ marginRight: 4 }} />
-            <Text style={[styles.swapText, { color: colors.text }]}>Swap</Text>
-          </TouchableOpacity>
+          {activeTab === 'doc' && (
+            <TouchableOpacity
+              onPress={() => {
+                setIsReversed((prev) => !prev);
+                clearSelectedFile();
+              }}
+              style={[styles.swapBtn, { backgroundColor: colors.card }]}
+            >
+              <RefreshCw size={13} color={colors.primary} style={{ marginRight: 4 }} />
+              <Text style={[styles.swapText, { color: colors.text }]}>Swap</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* File Picker Zone */}
@@ -340,11 +343,18 @@ export const FileConverterScreen: React.FC = () => {
 
         {/* Actions: Convert or Load Sample */}
         <View style={styles.actionsRow}>
-          {selectedFileUri && !conversionResult && (
+          {!!selectedFileUri && !conversionResult && (
             <TouchableOpacity
               onPress={handleConvert}
-              disabled={isConverting}
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+              accessibilityState={{ disabled: isConverting }}
+              style={[
+                styles.primaryBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isConverting ? 0.7 : 1,
+                  pointerEvents: isConverting ? 'none' : 'auto',
+                },
+              ]}
             >
               {isConverting ? (
                 <ActivityIndicator size="small" color="#fff" />

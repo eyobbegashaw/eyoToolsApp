@@ -314,7 +314,7 @@ export const translations: Record<Language, Translations> = {
     qr_reader: 'QR Code Reader',
     qr_reader_desc: 'Scan & decode QR codes from camera or image files',
     file_converter: 'File Converter',
-    file_converter_desc: 'Convert DOCX ↔ PDF, PPTX ↔ PDF, MD ↔ PDF',
+    file_converter_desc: 'Convert DOCX ↔ PDF, PPTX → PDF, and MD → PDF',
     md_editor: 'Markdown Studio',
     md_editor_desc: 'Write, live preview, and export to MD or styled PDF',
     steganography: 'Steganography',
@@ -545,7 +545,7 @@ export const translations: Record<Language, Translations> = {
     bg_remover: 'ዳራ አስወጋጅ',
     bg_remover_desc: 'ከምስሎች ላይ ጀርባውን አስወግደህ ግልጽ (PNG) ምስል አዘጋጅ',
     file_converter: 'የሰነድ እና ስላይድ መቀየሪያ',
-    file_converter_desc: 'የ Word (DOCX)፣ PowerPoint (PPTX) እና Markdown ፋይሎችን ወደ PDF እና በተቃራኒው ቀይር',
+    file_converter_desc: 'Word (DOCX) ↔ PDF ቀይር፤ PowerPoint (PPTX) እና Markdown ወደ PDF ቀይር',
     md_editor: 'የማርክዳውን (MD) አርታዒ',
     md_editor_desc: 'ማርክዳውን ጽሁፎችን አዘጋጅ፣ በቀጥታ እይ፣ እና ወደ .md ወይም ያማረ PDF ቀይረህ አውርድ',
 

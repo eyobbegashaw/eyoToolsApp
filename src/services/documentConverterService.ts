@@ -1,16 +1,19 @@
 import * as FileSystem from 'expo-file-system';
+import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { PDFService } from './pdfService';
+import { Platform } from 'react-native';
+import { strFromU8, unzipSync } from 'fflate';
 import { SimplePdfGenerator } from './pdfGenerator';
 import { SimpleZipBuilder } from './zipUtils';
+import { renderDocxHtml, renderPptxHtml } from './officeHtmlRenderer';
+import { renderMarkdownHtml } from './markdownPdfRenderer';
+import PdfPageRenderer, { type PdfPageRaster } from '../../modules/pdf-page-renderer';
 
 export type ConversionDirection =
   | 'doc_to_pdf'
   | 'pdf_to_doc'
   | 'ppt_to_pdf'
-  | 'pdf_to_ppt'
-  | 'md_to_pdf'
-  | 'pdf_to_md';
+  | 'md_to_pdf';
 
 export interface ConversionResult {
   outputUri: string;
@@ -21,13 +24,306 @@ export interface ConversionResult {
   slideCount?: number;
 }
 
-function escapeXml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+function decodeBase64(value: string): Uint8Array {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const bytes = new Uint8Array(Math.floor((value.length * 3) / 4) - padding);
+  let accumulator = 0;
+  let bitCount = 0;
+  let offset = 0;
+
+  for (const character of value) {
+    if (character === '=') break;
+    const digit = alphabet.indexOf(character);
+    if (digit === -1) continue;
+
+    accumulator = (accumulator << 6) | digit;
+    bitCount += 6;
+    if (bitCount >= 8) {
+      bitCount -= 8;
+      bytes[offset++] = (accumulator >> bitCount) & 0xff;
+    }
+  }
+
+  return bytes.subarray(0, offset);
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+    result += alphabet[first >> 2];
+    result += alphabet[((first & 3) << 4) | ((second ?? 0) >> 4)];
+    result += second === undefined
+      ? '=='
+      : `${alphabet[((second & 15) << 2) | ((third ?? 0) >> 6)]}${third === undefined ? '=' : alphabet[third & 63]}`;
+  }
+  return result;
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) =>
+      String.fromCodePoint(parseInt(code, 16))
+    )
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCodePoint(parseInt(code, 10))
+    )
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function extractXmlText(xml: string, tag: 'w:t' | 'a:t'): string {
+  const values = Array.from(xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'g')));
+  return values.map((match) => decodeXmlText(match[1])).join(' ');
+}
+
+function extractXmlParagraphs(xml: string, paragraphTag: 'w:p' | 'a:p', textTag: 'w:t' | 'a:t'): string[] {
+  return Array.from(
+    xml.matchAll(new RegExp(`<${paragraphTag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${paragraphTag}>`, 'g'))
+  )
+    .map((paragraph) => extractXmlText(paragraph[1], textTag).trim())
+    .filter(Boolean);
+}
+
+async function readZipEntries(uri: string): Promise<Record<string, Uint8Array>> {
+  try {
+    return unzipSync(await readFileBytes(uri));
+  } catch (error) {
+    throw new Error(
+      'Unable to open this Office document. It may be corrupted, encrypted, or not a valid DOCX/PPTX file.',
+      { cause: error }
+    );
+  }
+}
+
+async function readFileBytes(uri: string): Promise<Uint8Array> {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Unable to read the selected file (HTTP ${response.status}).`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return decodeBase64(base64);
+}
+
+async function readFileText(uri: string): Promise<string> {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Unable to read the selected file (HTTP ${response.status}).`);
+    }
+    return response.text();
+  }
+
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+}
+
+async function writeOutput(
+  fileName: string,
+  content: string,
+  encoding: 'utf8' | 'base64' | 'latin1'
+): Promise<{ uri: string; size: number }> {
+  if (Platform.OS === 'web') {
+    let data: string | Uint8Array;
+    if (encoding === 'base64') {
+      data = decodeBase64(content);
+    } else if (encoding === 'latin1') {
+      data = Uint8Array.from(content, (character) => character.charCodeAt(0) & 0xff);
+    } else {
+      data = content;
+    }
+    let blobPart: BlobPart;
+    if (data instanceof Uint8Array) {
+      const buffer = new ArrayBuffer(data.byteLength);
+      new Uint8Array(buffer).set(data);
+      blobPart = buffer;
+    } else {
+      blobPart = data;
+    }
+    const blob = new Blob([blobPart]);
+    return { uri: URL.createObjectURL(blob), size: blob.size };
+  }
+
+  const uri = `${FileSystem.cacheDirectory}${fileName}`;
+  const fileEncoding = encoding === 'utf8'
+    ? FileSystem.EncodingType.UTF8
+    : FileSystem.EncodingType.Base64;
+  const fileContent = encoding === 'latin1'
+    ? encodeBase64(Uint8Array.from(content, (character) => character.charCodeAt(0) & 0xff))
+    : content;
+  await FileSystem.writeAsStringAsync(uri, fileContent, { encoding: fileEncoding });
+  const info = await FileSystem.getInfoAsync(uri);
+  return { uri, size: info.exists ? info.size : content.length };
+}
+
+async function renderOfficePdf(
+  html: string,
+  outputFileName: string,
+  pageSize: {
+    width: number;
+    height: number;
+    margins?: { top: number; right: number; bottom: number; left: number };
+  }
+): Promise<{ uri: string; size: number; pages: number }> {
+  const width = Math.max(72, Number(pageSize.width) || 612);
+  const height = Math.max(72, Number(pageSize.height) || 792);
+
+  if (Platform.OS === 'web') {
+    const { default: html2pdf } = await import('html2pdf.js');
+    const frame = document.createElement('iframe');
+    frame.title = 'Document PDF rendering surface';
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${Math.ceil(width * 96 / 72)}px;height:${Math.ceil(height * 96 / 72)}px;border:0`;
+    frame.srcdoc = html;
+    const frameLoaded = new Promise<void>((resolve, reject) => {
+      frame.onload = () => resolve();
+      frame.onerror = () => reject(new Error('Unable to load the document for PDF rendering.'));
+    });
+    document.body.appendChild(frame);
+
+    try {
+      await frameLoaded;
+      const body = frame.contentDocument?.body;
+      if (!body || !body.children.length) {
+        throw new Error('The document renderer produced no printable content.');
+      }
+      await frame.contentDocument?.fonts?.ready;
+      const images = Array.from(body.querySelectorAll('img'));
+      await Promise.all(images.map((image) => image.decode()));
+      if (images.some((image) => image.naturalWidth === 0 || image.naturalHeight === 0)) {
+        throw new Error('The document contains an image that could not be rendered.');
+      }
+
+      const worker = html2pdf()
+        .set({
+          margin: pageSize.margins
+            ? [
+                pageSize.margins.top,
+                pageSize.margins.right,
+                pageSize.margins.bottom,
+                pageSize.margins.left,
+              ]
+            : 0,
+          image: { type: 'jpeg', quality: 0.96 },
+          enableLinks: true,
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+          },
+          jsPDF: {
+            unit: 'pt',
+            format: [width, height],
+            orientation: width > height ? 'landscape' : 'portrait',
+          },
+        })
+        .from(body)
+        .toPdf();
+      const pdf = await worker.get('pdf') as {
+        internal: { getNumberOfPages: () => number };
+        output: (type: 'blob') => Blob;
+      };
+      const blob = pdf.output('blob');
+      const pageCount = pdf.internal.getNumberOfPages();
+      if (blob.size === 0 || pageCount < 1 || (await blob.slice(0, 5).text()) !== '%PDF-') {
+        throw new Error('PDF rendering did not produce a valid PDF file.');
+      }
+      return {
+        uri: URL.createObjectURL(blob),
+        size: blob.size,
+        pages: pageCount,
+      };
+    } finally {
+      frame.remove();
+    }
+  }
+
+  const result = await Print.printToFileAsync({
+    html,
+    width,
+    height,
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+  });
+  const info = await FileSystem.getInfoAsync(result.uri);
+  if (!info.exists || info.size <= 0 || result.numberOfPages < 1) {
+    throw new Error('The document renderer did not produce a complete PDF.');
+  }
+  return {
+    uri: result.uri,
+    size: info.exists ? info.size : 0,
+    pages: result.numberOfPages,
+  };
+}
+
+async function rasterizePdf(uri: string): Promise<PdfPageRaster[]> {
+  if (Platform.OS !== 'web') {
+    const renderedPages = await PdfPageRenderer.renderPages(uri);
+    return Promise.all(
+      renderedPages.map(async (page) => ({
+        ...page,
+        uri: await FileSystem.readAsStringAsync(page.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        }),
+      }))
+    );
+  }
+
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error(`Unable to read the selected PDF (HTTP ${response.status}).`);
+  }
+  const data = new Uint8Array(await response.arrayBuffer());
+  const [pdfjs] = await Promise.all([
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.mjs'),
+  ]);
+  const document = await pdfjs.getDocument({
+    data,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  }).promise;
+  const pages: PdfPageRaster[] = [];
+
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(2, 2400 / Math.max(baseViewport.width, baseViewport.height));
+      const viewport = page.getViewport({ scale });
+      const canvas = window.document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Unable to render a PDF page image.');
+      await page.render({ canvasContext: context, viewport }).promise;
+      const base64Image = canvas.toDataURL('image/jpeg', 0.94).split(',')[1];
+      pages.push({
+        uri: base64Image,
+        width: baseViewport.width,
+        height: baseViewport.height,
+      });
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    await document.destroy();
+  }
+
+  return pages;
 }
 
 export class DocumentConverterService {
@@ -38,45 +334,25 @@ export class DocumentConverterService {
     uri: string,
     sourceFileName = 'document.docx'
   ): Promise<ConversionResult> {
-    const rawContent = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.UTF8,
-    }).catch(async () => {
-      return await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Latin1 as any,
-      });
-    });
-
-    // Extract textual blocks from docx XML / streams
-    const textMatches = rawContent.match(/<w:t[^>]*>(.*?)<\/w:t>/g) || [];
-    let extracted = textMatches.map((t: string) => t.replace(/<[^>]+>/g, '')).join(' ');
-
-    if (!extracted || extracted.trim().length === 0) {
-      extracted = rawContent.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
-    }
-
-    if (!extracted.trim()) {
-      extracted = 'No readable textual content could be extracted from this Word document.';
-    }
-
+    const entries = await readZipEntries(uri);
+    const rendered = renderDocxHtml(entries);
+    const documentXml = entries['word/document.xml'];
+    const extracted = documentXml
+      ? extractXmlParagraphs(strFromU8(documentXml), 'w:p', 'w:t').join('\n')
+      : '';
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}_converted.pdf`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
-
-    // Generate compliant binary PDF
-    const validPdfContent = SimplePdfGenerator.generate(extracted, {
-      title: baseName,
-      author: 'eyoTools Mobile Converter',
-    });
-
-    await FileSystem.writeAsStringAsync(outputUri, validPdfContent, {
-      encoding: FileSystem.EncodingType.Latin1 as any,
-    });
+    const output = await renderOfficePdf(
+      rendered.html,
+      outputFileName,
+      rendered
+    );
 
     return {
-      outputUri,
+      outputUri: output.uri,
       outputFileName,
-      fileSizeBytes: validPdfContent.length,
-      pageCount: Math.max(1, Math.ceil(extracted.length / 1800)),
+      fileSizeBytes: output.size,
+      pageCount: output.pages,
       textPreview: extracted.slice(0, 300),
     };
   }
@@ -88,28 +364,25 @@ export class DocumentConverterService {
     uri: string,
     sourceFileName = 'document.pdf'
   ): Promise<ConversionResult> {
-    const pdfData = await PDFService.extractTextFromUri(uri);
+    const pages = await rasterizePdf(uri);
+    if (!pages.length) {
+      throw new Error('The selected PDF does not contain any pages.');
+    }
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}_converted.docx`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
 
-    const textToConvert = pdfData.text.trim() || 'No readable text layer found in source PDF.';
-
-    // Construct valid DOCX OpenXML Zip Archive
     const zip = new SimpleZipBuilder();
-
-    // 1. [Content_Types].xml
     zip.addFile(
       '[Content_Types].xml',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`
     );
 
-    // 2. _rels/.rels
     zip.addFile(
       '_rels/.rels',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -118,68 +391,55 @@ export class DocumentConverterService {
 </Relationships>`
     );
 
-    // 3. word/_rels/document.xml.rels
+    const imageRelationships = pages
+      .map((_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/page${index + 1}.jpg"/>`
+      )
+      .join('\n');
     zip.addFile(
       'word/_rels/document.xml.rels',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${imageRelationships}
+</Relationships>`
     );
 
-    // 4. word/document.xml
-    const paragraphs = textToConvert.split(/\r?\n/).filter((p) => p.trim().length > 0);
-    const paragraphsXml = paragraphs
-      .map(
-        (p) => `<w:p>
-  <w:r>
-    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr>
-    <w:t>${escapeXml(p)}</w:t>
-  </w:r>
-</w:p>`
-      )
-      .join('\n');
+    const pageParagraphs = pages.map((page, index) => {
+      const width = Math.max(1, Math.round(page.width * 12700));
+      const height = Math.max(1, Math.round(page.height * 12700));
+      const sectionProperties =
+        index < pages.length - 1
+          ? `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${Math.round(width / 635)}" w:h="${Math.round(height / 635)}"${width > height ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`
+          : '';
+      return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/>${sectionProperties}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${width}" cy="${height}"/><wp:docPr id="${index + 1}" name="PDF page ${index + 1}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${index + 1}" name="PDF page ${index + 1}.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${index + 1}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${width}" cy="${height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+    });
+    const lastPageWidth = Math.round(pages[pages.length - 1].width * 20);
+    const lastPageHeight = Math.round(pages[pages.length - 1].height * 20);
+    const finalSection = `<w:sectPr><w:pgSz w:w="${lastPageWidth}" w:h="${lastPageHeight}"${lastPageWidth > lastPageHeight ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`;
 
     zip.addFile(
       'word/document.xml',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <w:body>
-    <w:p>
-      <w:pPr><w:jc w:val="center"/></w:pPr>
-      <w:r>
-        <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:sz w:val="32"/></w:rPr>
-        <w:t>${escapeXml(baseName)}</w:t>
-      </w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:jc w:val="center"/></w:pPr>
-      <w:r>
-        <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:i/><w:sz w:val="18"/><w:color w:val="666666"/></w:rPr>
-        <w:t>Converted by eyoTools Mobile Engine • ${new Date().toLocaleDateString()}</w:t>
-      </w:r>
-    </w:p>
-    ${paragraphsXml}
-    <w:sectPr>
-      <w:pgSz w:w="11906" w:h="16838"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
-    </w:sectPr>
+    ${pageParagraphs.join('\n')}
+    ${finalSection}
   </w:body>
 </w:document>`
     );
 
-    const base64Docx = zip.buildBase64();
-    await FileSystem.writeAsStringAsync(outputUri, base64Docx, {
-      encoding: FileSystem.EncodingType.Base64,
+    pages.forEach((page, index) => {
+      zip.addFile(`word/media/page${index + 1}.jpg`, decodeBase64(page.uri));
     });
-
-    const fileInfo = await FileSystem.getInfoAsync(outputUri);
-    const size = fileInfo.exists ? fileInfo.size : Math.round((base64Docx.length * 3) / 4);
+    const base64Docx = zip.buildBase64();
+    const output = await writeOutput(outputFileName, base64Docx, 'base64');
 
     return {
-      outputUri,
+      outputUri: output.uri,
       outputFileName,
-      fileSizeBytes: size,
-      pageCount: pdfData.totalPages,
-      textPreview: textToConvert.slice(0, 300),
+      fileSizeBytes: output.size,
+      pageCount: pages.length,
+      textPreview: 'PDF pages are preserved as images and are not editable.',
     };
   }
 
@@ -190,174 +450,33 @@ export class DocumentConverterService {
     uri: string,
     sourceFileName = 'presentation.pptx'
   ): Promise<ConversionResult> {
-    const raw = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Latin1 as any,
-    });
-
-    const slideMatches = raw.match(/<a:t>(.*?)<\/a:t>/g) || [];
-    const slideTexts = slideMatches
-      .map((t: string) => t.replace(/<[^>]+>/g, '').trim())
-      .filter(Boolean);
-
-    let contentToFormat = '';
-    if (slideTexts.length > 0) {
-      contentToFormat = slideTexts.map((s, idx) => `[Slide ${idx + 1}]\n${s}`).join('\n\n');
-    } else {
-      contentToFormat = `Presentation: ${sourceFileName}\nNo textual slide layers detected.`;
+    const entries = await readZipEntries(uri);
+    const slideFiles = Object.keys(entries)
+      .map((name) => ({ name, match: name.match(/^ppt\/slides\/slide(\d+)\.xml$/) }))
+      .filter((entry): entry is { name: string; match: RegExpMatchArray } => !!entry.match)
+      .sort((left, right) => Number(left.match[1]) - Number(right.match[1]));
+    if (slideFiles.length === 0) {
+      throw new Error('The selected file is not a valid PowerPoint presentation.');
     }
+
+    const slideTexts = slideFiles
+      .map(({ name }) => extractXmlParagraphs(strFromU8(entries[name]), 'a:p', 'a:t').join('\n'));
 
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}_slides.pdf`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
-
-    const validPdfContent = SimplePdfGenerator.generate(contentToFormat, {
-      title: `${baseName} (Slides)`,
-      author: 'eyoTools Mobile Engine',
-    });
-
-    await FileSystem.writeAsStringAsync(outputUri, validPdfContent, {
-      encoding: FileSystem.EncodingType.Latin1 as any,
-    });
+    const rendered = renderPptxHtml(entries);
+    const output = await renderOfficePdf(
+      rendered.html,
+      outputFileName,
+      rendered
+    );
 
     return {
-      outputUri,
+      outputUri: output.uri,
       outputFileName,
-      fileSizeBytes: validPdfContent.length,
-      slideCount: Math.max(1, slideTexts.length),
+      fileSizeBytes: output.size,
+      slideCount: rendered.slideCount,
       textPreview: slideTexts.slice(0, 6).join(' • '),
-    };
-  }
-
-  /**
-   * Convert PDF to a valid binary Microsoft PowerPoint (.pptx) OpenXML ZIP file
-   */
-  static async convertPdfToPptx(
-    uri: string,
-    sourceFileName = 'document.pdf'
-  ): Promise<ConversionResult> {
-    const pdfData = await PDFService.extractTextFromUri(uri);
-    const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
-    const outputFileName = `${baseName}_presentation.pptx`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
-
-    const pages = pdfData.pageTexts && pdfData.pageTexts.length > 0
-      ? pdfData.pageTexts
-      : [pdfData.text || 'Slide 1 Content'];
-
-    // Construct valid PPTX OpenXML Zip Archive
-    const zip = new SimpleZipBuilder();
-
-    // 1. [Content_Types].xml
-    const slideOverrides = pages
-      .map(
-        (_, idx) =>
-          `<Override PartName="/ppt/slides/slide${idx + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`
-      )
-      .join('\n');
-
-    zip.addFile(
-      '[Content_Types].xml',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  ${slideOverrides}
-</Types>`
-    );
-
-    // 2. _rels/.rels
-    zip.addFile(
-      '_rels/.rels',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>`
-    );
-
-    // 3. ppt/presentation.xml
-    const sldIdLst = pages
-      .map((_, idx) => `<p:sldId id="${256 + idx}" r:id="rId${idx + 1}"/>`)
-      .join('\n');
-
-    zip.addFile(
-      'ppt/presentation.xml',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <p:sldMasterIdLst/>
-  <p:sldIdLst>
-    ${sldIdLst}
-  </p:sldIdLst>
-  <p:sldSz cx="9144000" cy="6858000"/>
-</p:presentation>`
-    );
-
-    // 4. ppt/_rels/presentation.xml.rels
-    const presRels = pages
-      .map(
-        (_, idx) =>
-          `<Relationship Id="rId${idx + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${idx + 1}.xml"/>`
-      )
-      .join('\n');
-
-    zip.addFile(
-      'ppt/_rels/presentation.xml.rels',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${presRels}
-</Relationships>`
-    );
-
-    // 5. Slides
-    pages.forEach((pageContent, idx) => {
-      const slideNum = idx + 1;
-      const lines = pageContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      const title = lines[0] || `Slide ${slideNum}`;
-      const body = lines.slice(1).join('\n') || pageContent.slice(0, 300);
-
-      zip.addFile(
-        `ppt/slides/slide${slideNum}.xml`,
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:grpSpPr/></p:nvGrpSpPr>
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr><a:xfrm><a:off x="685800" y="457200"/><a:ext cx="7772400" cy="1143000"/></a:xfrm></p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p><a:r><a:rPr lang="en-US" sz="3200" b="1"/><a:t>${escapeXml(title)}</a:t></a:r></a:p>
-        </p:txBody>
-      </p:sp>
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr><a:xfrm><a:off x="685800" y="1800000"/><a:ext cx="7772400" cy="4500000"/></a:xfrm></p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p><a:r><a:rPr lang="en-US" sz="1600"/><a:t>${escapeXml(body)}</a:t></a:r></a:p>
-        </p:txBody>
-      </p:sp>
-    </p:spTree>
-  </p:cSld>
-</p:sld>`
-      );
-    });
-
-    const base64Pptx = zip.buildBase64();
-    await FileSystem.writeAsStringAsync(outputUri, base64Pptx, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const fileInfo = await FileSystem.getInfoAsync(outputUri);
-    const size = fileInfo.exists ? fileInfo.size : Math.round((base64Pptx.length * 3) / 4);
-
-    return {
-      outputUri,
-      outputFileName,
-      fileSizeBytes: size,
-      slideCount: pages.length,
-      textPreview: pages[0]?.slice(0, 300) || '',
     };
   }
 
@@ -370,60 +489,45 @@ export class DocumentConverterService {
   ): Promise<ConversionResult> {
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}.pdf`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
-
-    const validPdfContent = SimplePdfGenerator.generate(markdown, {
-      title: baseName,
-      author: 'eyoTools Markdown Engine',
-    });
-
-    await FileSystem.writeAsStringAsync(outputUri, validPdfContent, {
-      encoding: FileSystem.EncodingType.Latin1 as any,
-    });
+    const html = await renderMarkdownHtml(markdown);
+    const output = await renderOfficePdf(
+      html,
+      outputFileName,
+      { width: 612, height: 792, margins: { top: 54, right: 54, bottom: 54, left: 54 } }
+    );
 
     return {
-      outputUri,
+      outputUri: output.uri,
       outputFileName,
-      fileSizeBytes: validPdfContent.length,
-      pageCount: Math.max(1, Math.ceil(markdown.length / 1500)),
+      fileSizeBytes: output.size,
+      pageCount: output.pages,
       textPreview: markdown.slice(0, 300),
     };
   }
 
-  /**
-   * Convert PDF to Markdown (.md)
-   */
-  static async convertPdfToMd(
+  static async convertMdFileToPdf(
     uri: string,
-    sourceFileName = 'document.pdf'
+    sourceFileName = 'notes.md'
   ): Promise<ConversionResult> {
-    const pdfData = await PDFService.extractTextFromUri(uri);
-    const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
-    const outputFileName = `${baseName}_converted.md`;
-    const outputUri = `${FileSystem.cacheDirectory}${outputFileName}`;
-
-    let md = `# ${baseName}\n\n> Converted via eyoTools Mobile Engine on ${new Date().toLocaleDateString()}\n\n`;
-    pdfData.pageTexts.forEach((p, idx) => {
-      md += `## Page ${idx + 1}\n\n${p}\n\n---\n\n`;
-    });
-
-    await FileSystem.writeAsStringAsync(outputUri, md, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-
-    return {
-      outputUri,
-      outputFileName,
-      fileSizeBytes: md.length,
-      pageCount: pdfData.totalPages,
-      textPreview: md.slice(0, 300),
-    };
+    const markdown = await readFileText(uri);
+    return this.convertMdToPdf(markdown, sourceFileName);
   }
 
   /**
-   * Share / Download converted file via Android native SAF share sheet
+   * Share or download the converted file.
    */
-  static async shareResult(outputUri: string) {
+  static async shareResult(outputUri: string, fileName?: string) {
+    if (Platform.OS === 'web') {
+      const link = document.createElement('a');
+      link.href = outputUri;
+      link.download = fileName || 'converted-file';
+      link.click();
+      if (outputUri.startsWith('blob:')) {
+        setTimeout(() => URL.revokeObjectURL(outputUri), 1000);
+      }
+      return;
+    }
+
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(outputUri);
     }
@@ -437,11 +541,8 @@ export class DocumentConverterService {
     name: string;
     size: number;
   }> {
-    const dir = FileSystem.cacheDirectory;
-
     if (type === 'docx') {
       const fileName = 'Sample_CS_Notes.docx';
-      const uri = `${dir}${fileName}`;
       const zip = new SimpleZipBuilder();
       zip.addFile(
         '[Content_Types].xml',
@@ -472,14 +573,12 @@ export class DocumentConverterService {
 </w:document>`
       );
       const b64 = zip.buildBase64();
-      await FileSystem.writeAsStringAsync(uri, b64, { encoding: FileSystem.EncodingType.Base64 });
-      const info = await FileSystem.getInfoAsync(uri);
-      return { uri, name: fileName, size: info.exists ? info.size : 1024 };
+      const output = await writeOutput(fileName, b64, 'base64');
+      return { uri: output.uri, name: fileName, size: output.size };
     }
 
     if (type === 'pptx') {
       const fileName = 'Sample_CS_Slides.pptx';
-      const uri = `${dir}${fileName}`;
       const zip = new SimpleZipBuilder();
       zip.addFile(
         '[Content_Types].xml',
@@ -523,27 +622,24 @@ export class DocumentConverterService {
 </p:sld>`
       );
       const b64 = zip.buildBase64();
-      await FileSystem.writeAsStringAsync(uri, b64, { encoding: FileSystem.EncodingType.Base64 });
-      const info = await FileSystem.getInfoAsync(uri);
-      return { uri, name: fileName, size: info.exists ? info.size : 1024 };
+      const output = await writeOutput(fileName, b64, 'base64');
+      return { uri: output.uri, name: fileName, size: output.size };
     }
 
     if (type === 'md') {
       const fileName = 'Sample_Notes.md';
-      const uri = `${dir}${fileName}`;
       const content = '# Sample Markdown Notes\n\n## Algorithmic Complexity\n- O(1) Constant\n- O(log n) Logarithmic\n- O(n) Linear\n';
-      await FileSystem.writeAsStringAsync(uri, content, { encoding: FileSystem.EncodingType.UTF8 });
-      return { uri, name: fileName, size: content.length };
+      const output = await writeOutput(fileName, content, 'utf8');
+      return { uri: output.uri, name: fileName, size: output.size };
     }
 
     // PDF sample
     const fileName = 'Sample_Document.pdf';
-    const uri = `${dir}${fileName}`;
     const pdfData = SimplePdfGenerator.generate(
       'eyoTools Sample PDF Document\n\nCourse: Operating Systems & Memory Management\nStack and Heap memory allocation models with virtual memory paging.',
       { title: 'Operating Systems Sample', author: 'eyoTools Engine' }
     );
-    await FileSystem.writeAsStringAsync(uri, pdfData, { encoding: FileSystem.EncodingType.Latin1 as any });
-    return { uri, name: fileName, size: pdfData.length };
+    const output = await writeOutput(fileName, pdfData, 'latin1');
+    return { uri: output.uri, name: fileName, size: output.size };
   }
 }

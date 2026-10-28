@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -16,7 +17,6 @@ import {
   Upload,
   Copy,
   Download,
-  Trash2,
   Search,
   AlertCircle,
   CheckCircle2,
@@ -42,6 +42,13 @@ export const PdfToTextScreen: React.FC<PdfToTextScreenProps> = ({ onNavigate }) 
   const [extractionResult, setExtractionResult] = useState<PDFExtractionResult | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const visibleText =
+    extractionResult && searchQuery.trim()
+      ? extractionResult.text
+          .split('\n')
+          .filter((line) => line.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+          .join('\n')
+      : extractionResult?.text ?? '';
 
   const handlePickDocument = async () => {
     try {
@@ -59,6 +66,8 @@ export const PdfToTextScreen: React.FC<PdfToTextScreenProps> = ({ onNavigate }) 
         setFileUri(file.uri);
         setExtractionResult(null);
         setProgress(0);
+        setSearchQuery('');
+        setCopySuccess(false);
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to select PDF document');
@@ -106,7 +115,7 @@ Linear collections provide sequential traversal:
   };
 
   const handleExtract = async () => {
-    if (!fileUri) return;
+    if (!fileUri || isProcessing) return;
 
     try {
       setIsProcessing(true);
@@ -134,15 +143,23 @@ Linear collections provide sequential traversal:
 
   const handleCopyText = async () => {
     if (!extractionResult) return;
-    await Clipboard.setStringAsync(extractionResult.text);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
+    try {
+      await Clipboard.setStringAsync(extractionResult.text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to copy extracted text');
+    }
   };
 
   const handleExportTxt = async () => {
     if (!extractionResult) return;
     const exportName = selectedFileName.replace(/\.[^/.]+$/, '') + '_extracted.txt';
-    await PDFService.exportTextFile(extractionResult.text, exportName);
+    try {
+      await PDFService.exportTextFile(extractionResult.text, exportName);
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to export extracted text');
+    }
   };
 
   return (
@@ -152,19 +169,19 @@ Linear collections provide sequential traversal:
       showsVerticalScrollIndicator={false}
     >
       {/* Header Info */}
-      <View
-        style={[
-          styles.headerCard,
-          { backgroundColor: colors.card, borderColor: colors.cardBorder },
-        ]}
+      <LinearGradient
+        colors={['#065f46', '#0f766e', '#0f172a']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.headerCard, styles.headerGradient]}
       >
         <View style={styles.headerRow}>
-          <View style={[styles.iconWrap, { backgroundColor: 'rgba(5, 150, 105, 0.15)' }]}>
-            <FileText size={22} color="#059669" />
+          <View style={styles.iconWrap}>
+            <FileText size={22} color="#ffffff" />
           </View>
           <View style={styles.headerTextWrap}>
-            <Text style={[styles.title, { color: colors.text }]}>{t.pdf_extract}</Text>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+            <Text style={styles.title}>{t.pdf_extract}</Text>
+            <Text style={styles.subtitle}>
               {t.pdf_extract_desc}
             </Text>
           </View>
@@ -177,28 +194,30 @@ Linear collections provide sequential traversal:
           style={[
             styles.dropZone,
             {
-              backgroundColor: colors.cardSecondary,
-              borderColor: fileUri ? '#059669' : colors.cardBorder,
+            backgroundColor: 'rgba(255,255,255,0.08)',
+            borderColor: fileUri
+              ? '#34d399'
+              : 'rgba(255,255,255,0.35)',
             },
           ]}
         >
           {selectedFileName ? (
             <View style={styles.selectedFileBox}>
-              <FileText size={28} color="#059669" />
-              <Text numberOfLines={1} style={[styles.fileName, { color: colors.text }]}>
+              <FileText size={28} color="#34d399" />
+              <Text numberOfLines={1} style={[styles.fileName, { color: '#ffffff' }]}>
                 {selectedFileName}
               </Text>
-              <Text style={[styles.fileSize, { color: colors.textMuted }]}>
+              <Text style={[styles.fileSize, { color: '#d1fae5' }]}>
                 {selectedFileSize} • Ready to extract
               </Text>
             </View>
           ) : (
             <View style={styles.emptyPickerBox}>
-              <Upload size={28} color={colors.textMuted} />
-              <Text style={[styles.pickerTitle, { color: colors.text }]}>
+              <Upload size={28} color="#d1fae5" />
+              <Text style={[styles.pickerTitle, { color: '#ffffff' }]}>
                 {t.choose_pdf}
               </Text>
-              <Text style={[styles.pickerSub, { color: colors.textMuted }]}>
+              <Text style={[styles.pickerSub, { color: '#d1fae5' }]}>
                 {t.pdf_drop_zone}
               </Text>
             </View>
@@ -209,8 +228,15 @@ Linear collections provide sequential traversal:
           {fileUri && !extractionResult ? (
             <TouchableOpacity
               onPress={handleExtract}
-              disabled={isProcessing}
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+              accessibilityState={{ disabled: isProcessing }}
+              style={[
+                styles.primaryBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isProcessing ? 0.7 : 1,
+                  pointerEvents: isProcessing ? 'none' : 'auto',
+                },
+              ]}
             >
               {isProcessing ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -222,29 +248,56 @@ Linear collections provide sequential traversal:
 
           <TouchableOpacity
             onPress={handleLoadSample}
-            style={[styles.sampleBtn, { backgroundColor: colors.cardSecondary }]}
+            style={styles.sampleBtn}
           >
             <Sparkles size={14} color="#f59e0b" style={{ marginRight: 6 }} />
-            <Text style={[styles.sampleBtnText, { color: colors.textSecondary }]}>
+            <Text style={styles.sampleBtnText}>
               Load CS Sample PDF
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
 
-      {/* Progress Bar */}
+      {/* Extraction progress */}
       {isProcessing && (
-        <View style={styles.progressContainer}>
+        <View
+          style={[
+            styles.progressContainer,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={styles.progressHeader}>
+            <View style={styles.progressHeading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <View style={styles.progressHeadingText}>
+                <Text style={[styles.progressTitle, { color: colors.text }]}>
+                  {progress < 15
+                    ? 'Preparing PDF'
+                    : progress < 35
+                      ? 'Reading document'
+                      : progress < 95
+                        ? 'Extracting text'
+                        : 'Finishing up'}
+                </Text>
+                <Text style={[styles.progressSubtext, { color: colors.textMuted }]}>
+                  Your file stays on this device
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.progressPercent, { color: colors.primary }]}>
+              {Math.round(progress)}%
+            </Text>
+          </View>
           <View style={[styles.progressBarBg, { backgroundColor: colors.cardSecondary }]}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${progress}%`, backgroundColor: colors.primary },
-              ]}
+            <LinearGradient
+              colors={['#10b981', '#06b6d4']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` }]}
             />
           </View>
           <Text style={[styles.progressText, { color: colors.textMuted }]}>
-            {t.extracting} ({progress}%)
+            {progress < 35 ? 'Loading your PDF securely…' : 'Reading page content…'}
           </Text>
         </View>
       )}
@@ -289,10 +342,6 @@ Linear collections provide sequential traversal:
           ) : (
             <>
               <View style={styles.resultStatsRow}>
-                <Text style={[styles.statsItem, { color: colors.textMuted }]}>
-                  {extractionResult.totalPages} Pages • {extractionResult.wordCount} Words
-                </Text>
-
                 <View style={styles.resultIconsRow}>
                   <TouchableOpacity onPress={handleCopyText} style={styles.iconAction}>
                     <Copy size={16} color={copySuccess ? '#10b981' : colors.text} />
@@ -301,6 +350,28 @@ Linear collections provide sequential traversal:
                     <Download size={16} color={colors.primary} />
                   </TouchableOpacity>
                 </View>
+              </View>
+              <View style={styles.statsGrid}>
+                {[
+                  { label: 'Pages', value: extractionResult.totalPages },
+                  { label: 'Words', value: extractionResult.wordCount },
+                  { label: 'Characters', value: extractionResult.characterCount },
+                ].map((stat) => (
+                  <View
+                    key={stat.label}
+                    style={[
+                      styles.statsCard,
+                      { backgroundColor: colors.cardSecondary },
+                    ]}
+                  >
+                    <Text style={[styles.statsValue, { color: colors.text }]}>
+                      {stat.value.toLocaleString()}
+                    </Text>
+                    <Text style={[styles.statsLabel, { color: colors.textMuted }]}>
+                      {stat.label}
+                    </Text>
+                  </View>
+                ))}
               </View>
 
               {/* Search Bar inside extracted text */}
@@ -328,7 +399,7 @@ Linear collections provide sequential traversal:
                     { color: colors.text, fontSize: 12 * fontScale },
                   ]}
                 >
-                  {extractionResult.text}
+                  {visibleText || (searchQuery.trim() ? 'No matching lines found.' : extractionResult.text)}
                 </Text>
               </ScrollView>
 
@@ -389,10 +460,14 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   headerCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
+    borderRadius: 22,
+    padding: 18,
     marginBottom: 16,
+    overflow: 'hidden',
+    boxShadow: '0px 8px 24px rgba(2, 44, 34, 0.25)',
+  },
+  headerGradient: {
+    borderColor: 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -406,6 +481,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   headerTextWrap: {
     flex: 1,
@@ -413,10 +491,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '800',
+    color: '#ffffff',
   },
   subtitle: {
     fontSize: 11,
     marginTop: 2,
+    color: '#d1fae5',
   },
   dropZone: {
     borderRadius: 16,
@@ -470,27 +550,59 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 38,
     borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   sampleBtnText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#ffffff',
   },
   progressContainer: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
     marginBottom: 16,
   },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  progressHeadingText: {
+    marginLeft: 10,
+  },
+  progressTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  progressSubtext: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  progressPercent: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
   progressBarBg: {
-    height: 6,
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 4,
+    marginTop: 14,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
   },
   progressText: {
     fontSize: 11,
-    textAlign: 'center',
+    marginTop: 8,
   },
   resultCard: {
     borderRadius: 20,
@@ -515,6 +627,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  statsCard: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  statsValue: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  statsLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 3,
   },
   statsItem: {
     fontSize: 12,

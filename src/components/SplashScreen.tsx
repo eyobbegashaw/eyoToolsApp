@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,10 +9,22 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const { t, language } = useTheme();
+  const [isFinishing, setIsFinishing] = useState(false);
+  const isFinishingRef = useRef(false);
+
+  const handleFinish = () => {
+    if (isFinishingRef.current) {
+      return;
+    }
+
+    isFinishingRef.current = true;
+    setIsFinishing(true);
+    onFinish();
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      onFinish();
+      handleFinish();
     }, 1800);
     return () => clearTimeout(timer);
   }, [onFinish]);
@@ -43,9 +55,16 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
       <View style={styles.footer}>
         <ActivityIndicator size="small" color="#38bdf8" style={styles.spinner} />
         <TouchableOpacity
-          onPress={onFinish}
+          onPress={handleFinish}
           activeOpacity={0.8}
-          style={styles.skipBtn}
+          accessibilityState={{ disabled: isFinishing }}
+          style={[
+            styles.skipBtn,
+            {
+              opacity: isFinishing ? 0.5 : 1,
+              pointerEvents: isFinishing ? 'none' : 'auto',
+            },
+          ]}
         >
           <Text style={styles.skipText}>
             {language === 'am' ? 'ጀምር' : 'Tap to Enter'}
@@ -78,10 +97,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
     elevation: 8,
-    shadowColor: '#38bdf8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(56, 189, 248, 0.4)',
   },
   logoText: {
     color: '#ffffff',

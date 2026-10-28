@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -12,15 +13,85 @@ export interface PDFExtractionResult {
 }
 
 export class PDFService {
+  private static async extractTextOnWeb(
+    uri: string,
+    onProgress?: (progress: number) => void
+  ): Promise<PDFExtractionResult> {
+    const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Unable to read the selected PDF (HTTP ${response.status}).`);
+    }
+
+    const data = new Uint8Array(await response.arrayBuffer());
+    onProgress?.(15);
+
+    const [pdfjs] = await Promise.all([
+      import('pdfjs-dist/legacy/build/pdf.mjs'),
+      import('pdfjs-dist/legacy/build/pdf.worker.mjs'),
+    ]);
+
+    const document = await pdfjs.getDocument({
+      data,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    }).promise;
+    const totalPages = document.numPages;
+    const pageTexts: string[] = [];
+    let hasImages = false;
+
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const [textContent, operatorList] = await Promise.all([
+        page.getTextContent(),
+        page.getOperatorList(),
+      ]);
+      const pageText = textContent.items
+        .map((item) => ('str' in item ? item.str : ''))
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      pageTexts.push(pageText);
+      hasImages ||= operatorList.fnArray.some(
+        (operator) =>
+          operator === pdfjs.OPS.paintImageXObject ||
+          operator === pdfjs.OPS.paintInlineImageXObject ||
+          operator === pdfjs.OPS.paintImageMaskXObject
+      );
+      onProgress?.(15 + Math.round((pageNumber / totalPages) * 80));
+    }
+
+    await document.destroy();
+
+    const text = pageTexts.filter(Boolean).join('\n\n');
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const cleanAlphaNumeric = text.replace(/[^a-zA-Z0-9\u1200-\u137F]/g, '');
+    onProgress?.(100);
+
+    return {
+      text,
+      totalPages,
+      wordCount,
+      characterCount: text.length,
+      isScannedOnly: cleanAlphaNumeric.length === 0,
+      hasImages,
+      pageTexts,
+    };
+  }
+
   /**
-   * Extract readable text from a local PDF URI using on-device PDF stream parsing.
-   * Accurately distinguishes text-based PDFs from scanned/raster PDFs.
+   * Extract readable text from a PDF. Web uses PDF.js; native retains the
+   * existing local PDF stream parser.
    */
   static async extractTextFromUri(
     uri: string,
     onProgress?: (progress: number) => void
   ): Promise<PDFExtractionResult> {
     try {
+      if (Platform.OS === 'web') {
+        return await this.extractTextOnWeb(uri, onProgress);
+      }
+
       if (onProgress) onProgress(15);
 
       // Read file content
@@ -99,7 +170,7 @@ export class PDFService {
           wordCount: 0,
           characterCount: 0,
           isScannedOnly: true,
-          hasImages: hasImages || true,
+          hasImages,
           pageTexts: [],
         };
       }
@@ -135,7 +206,20 @@ export class PDFService {
    * Save extracted text to local cache and open Android share sheet
    */
   static async exportTextFile(content: string, filename = 'eyoTools_extracted.txt') {
-    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+    const safeFilename = filename.replace(/[\\/:*?"<>|]/g, '_');
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = safeFilename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      return;
+    }
+
+    const fileUri = `${FileSystem.cacheDirectory}${safeFilename}`;
     await FileSystem.writeAsStringAsync(fileUri, content, {
       encoding: FileSystem.EncodingType.UTF8,
     });

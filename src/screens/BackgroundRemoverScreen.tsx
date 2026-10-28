@@ -53,7 +53,7 @@ export const BackgroundRemoverScreen: React.FC = () => {
   };
 
   const handleRemoveBackground = () => {
-    if (!imageUri) return;
+    if (!imageUri || isProcessing) return;
 
     setIsProcessing(true);
     setTimeout(() => {
@@ -182,8 +182,15 @@ export const BackgroundRemoverScreen: React.FC = () => {
           {!resultUri ? (
             <TouchableOpacity
               onPress={handleRemoveBackground}
-              disabled={isProcessing}
-              style={[styles.removeBtn, { backgroundColor: colors.primary }]}
+              accessibilityState={{ disabled: isProcessing }}
+              style={[
+                styles.removeBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isProcessing ? 0.7 : 1,
+                  pointerEvents: isProcessing ? 'none' : 'auto',
+                },
+              ]}
             >
               {isProcessing ? (
                 <ActivityIndicator size="small" color="#fff" />

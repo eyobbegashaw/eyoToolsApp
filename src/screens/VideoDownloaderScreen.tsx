@@ -53,7 +53,7 @@ export const VideoDownloaderScreen: React.FC = () => {
   };
 
   const handleFetchInfo = async () => {
-    if (!url.trim()) return;
+    if (isFetching || !url.trim()) return;
 
     setIsFetching(true);
     setVideoInfo(null);
@@ -190,10 +190,14 @@ export const VideoDownloaderScreen: React.FC = () => {
 
         <TouchableOpacity
           onPress={handleFetchInfo}
-          disabled={isFetching || !url.trim()}
+          accessibilityState={{ disabled: isFetching || !url.trim() }}
           style={[
             styles.analyzeBtn,
-            { backgroundColor: '#dc2626', opacity: isFetching || !url.trim() ? 0.6 : 1 },
+            {
+              backgroundColor: '#dc2626',
+              opacity: isFetching || !url.trim() ? 0.6 : 1,
+              pointerEvents: isFetching || !url.trim() ? 'none' : 'auto',
+            },
           ]}
         >
           {isFetching ? (

@@ -1,0 +1,31 @@
+diff --git a/node_modules/pdfjs-dist/legacy/build/pdf.mjs b/node_modules/pdfjs-dist/legacy/build/pdf.mjs
+index 2975d8d..5289cad 100644
+--- a/node_modules/pdfjs-dist/legacy/build/pdf.mjs
++++ b/node_modules/pdfjs-dist/legacy/build/pdf.mjs
+@@ -11411,7 +11411,7 @@ class DOMStandardFontDataFactory extends BaseStandardFontDataFactory {
+ if (isNodeJS) {
+   let canvas;
+   try {
+-    const require = process.getBuiltinModule("module").createRequire(import.meta.url);
++    const require = process.getBuiltinModule("module").createRequire(process.cwd() + "/pdfjs-entry.js");
+     try {
+       canvas = require("@napi-rs/canvas");
+     } catch (ex) {
+@@ -11450,7 +11450,7 @@ async function node_utils_fetchData(url) {
+ class NodeFilterFactory extends BaseFilterFactory {}
+ class NodeCanvasFactory extends BaseCanvasFactory {
+   _createCanvas(width, height) {
+-    const require = process.getBuiltinModule("module").createRequire(import.meta.url);
++    const require = process.getBuiltinModule("module").createRequire(process.cwd() + "/pdfjs-entry.js");
+     const canvas = require("@napi-rs/canvas");
+     return canvas.createCanvas(width, height);
+   }
+@@ -17508,7 +17508,7 @@ class PDFWorker {
+       if (this.#mainThreadWorkerMessageHandler) {
+         return this.#mainThreadWorkerMessageHandler;
+       }
+-      const worker = await import(/*webpackIgnore: true*/this.workerSrc);
++      const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+       return worker.WorkerMessageHandler;
+     };
+     return shadow(this, "_setupFakeWorkerGlobal", loader());

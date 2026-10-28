@@ -41,7 +41,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.pdf_extract,
       description: t.pdf_extract_desc,
       icon: FileText,
-      color: '#059669', // Emerald
+      color: '#059669',
       badge: 'Local',
     },
     {
@@ -50,7 +50,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.file_converter,
       description: t.file_converter_desc,
       icon: ArrowRightLeft,
-      color: '#0284c7', // Blue/Cyan
+      color: '#0284c7',
       badge: 'DOC•PPT•MD',
     },
     {
@@ -59,8 +59,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.md_editor,
       description: t.md_editor_desc,
       icon: FileCode,
-      color: '#8b5cf6', // Purple
-      badge: 'Studio & PDF',
+      color: '#8b5cf6',
+      badge: 'Studio',
     },
     {
       id: 'ocr' as ToolId,
@@ -68,8 +68,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.ocr,
       description: t.ocr_desc,
       icon: ScanText,
-      color: '#2563eb', // Blue
-      badge: 'Fidel & Eng',
+      color: '#2563eb',
+      badge: 'Fidel',
     },
     {
       id: 'pdf_audio' as ToolId,
@@ -77,7 +77,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.pdf_audio,
       description: t.pdf_audio_desc,
       icon: Volume2,
-      color: '#7c3aed', // Indigo
+      color: '#7c3aed',
       badge: 'TTS',
     },
     {
@@ -86,8 +86,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.qr,
       description: t.qr_desc,
       icon: QrCode,
-      color: '#d97706', // Amber
-      badge: 'Generator',
+      color: '#d97706',
+      badge: 'Gen',
     },
     {
       id: 'qr_reader' as ToolId,
@@ -95,8 +95,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.qr_reader,
       description: t.qr_reader_desc,
       icon: Scan,
-      color: '#0d9488', // Teal
-      badge: 'Scanner',
+      color: '#0d9488',
+      badge: 'Scan',
     },
     {
       id: 'steganography' as ToolId,
@@ -104,8 +104,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.steganography,
       description: t.steganography_desc,
       icon: ShieldCheck,
-      color: '#4f46e5', // Deep Indigo
-      badge: '16-bit LSB',
+      color: '#4f46e5',
+      badge: 'LSB',
     },
     {
       id: 'bg_remover' as ToolId,
@@ -113,8 +113,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.bg_remover,
       description: t.bg_remover_desc,
       icon: Scissors,
-      color: '#e11d48', // Rose
-      badge: '4-Corner Mask',
+      color: '#e11d48',
+      badge: 'Mask',
     },
     {
       id: 'youtube' as ToolId,
@@ -122,10 +122,74 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       title: t.youtube,
       description: t.youtube_desc,
       icon: Video,
-      color: '#dc2626', // Red
-      badge: 'Media Stream',
+      color: '#dc2626',
+      badge: 'Stream',
     },
   ];
+
+  const defaultPopularTools: ToolId[] = ['pdf_extract', 'file_converter', 'qr'];
+
+  const rankedPopularTools = (() => {
+    const counts = new Map<ToolId, number>();
+
+    recentHistory.forEach((item) => {
+      counts.set(item.toolId, (counts.get(item.toolId) ?? 0) + 1);
+    });
+
+    const orderedIds = [...new Set([...counts.keys(), ...defaultPopularTools])]
+      .sort((a, b) => {
+        const countDiff = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+        if (countDiff !== 0) return countDiff;
+        return defaultPopularTools.indexOf(a) - defaultPopularTools.indexOf(b);
+      })
+      .slice(0, 3);
+
+    if (orderedIds.length < 3) {
+      defaultPopularTools.forEach((toolId) => {
+        if (!orderedIds.includes(toolId)) {
+          orderedIds.push(toolId);
+        }
+      });
+    }
+
+    return orderedIds.slice(0, 3);
+  })();
+
+  const popularTools = toolsList.filter((tool) => rankedPopularTools.includes(tool.id));
+
+  const defaultHistoryItems: HistoryItem[] = [
+    {
+      id: 'default-history-1',
+      toolId: 'pdf_extract',
+      title: 'PDF extraction',
+      timestamp: Date.now() - 60000,
+      snippet: 'Turn scanned files into editable text quickly',
+      fileSize: '1 min ago',
+      fileType: 'PDF',
+    },
+    {
+      id: 'default-history-2',
+      toolId: 'file_converter',
+      title: 'File converter',
+      timestamp: Date.now() - 120000,
+      snippet: 'Convert docs, slides, and markdown on the go',
+      fileSize: '2 min ago',
+      fileType: 'DOC',
+    },
+    {
+      id: 'default-history-3',
+      toolId: 'qr',
+      title: 'QR generator',
+      timestamp: Date.now() - 180000,
+      snippet: 'Create shareable QR codes for links and text',
+      fileSize: '3 min ago',
+      fileType: 'QR',
+    },
+  ];
+
+  const displayHistory = recentHistory.length >= 3 
+    ? recentHistory.slice(0, 3)
+    : [...recentHistory, ...defaultHistoryItems].slice(0, 3);
 
   return (
     <ScrollView
@@ -133,9 +197,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Hero Welcome Card */}
       <LinearGradient
-        colors={['#0284c7', '#0f766e', '#0f172a']}
+        colors={['#0f172a', '#0b1120', '#0369a1']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.heroCard}
@@ -147,162 +210,114 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
           <Text style={styles.heroVersion}>v1.0.0</Text>
         </View>
 
-        <Text style={[styles.heroTitle, { fontSize: 20 * fontScale }]}>
-          {t.welcome}
-        </Text>
+        <Text style={[styles.heroTitle, { fontSize: 20 * fontScale }]}>{t.welcome}</Text>
         <Text style={styles.heroSub}>{t.welcome_sub}</Text>
 
-        <View style={styles.quoteBox}>
-          <Text style={styles.quoteText}>{t.cs_quote}</Text>
+        <View style={styles.heroMetrics}>
+          <View style={styles.metricBox}>
+            <Text style={styles.metricValue}>{popularTools.length}</Text>
+            <Text style={styles.metricLabel}>Smart picks</Text>
+          </View>
+          <View style={styles.metricBox}>
+            <Text style={styles.metricValue}>{displayHistory.length}</Text>
+            <Text style={styles.metricLabel}>Recent</Text>
+          </View>
+          <View style={styles.metricBox}>
+            <Text style={styles.metricValue}>3+</Text>
+            <Text style={styles.metricLabel}>Quick access</Text>
+          </View>
         </View>
       </LinearGradient>
 
-      {/* Quick Action Horizontal Pills */}
-      <View style={styles.quickActionsWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickActionsScroll}
-        >
-          <TouchableOpacity
-            onPress={() => onNavigate('pdf_extract')}
-            style={[styles.quickPill, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}
-          >
-            <FileText size={14} color="#10b981" />
-            <Text style={[styles.quickPillText, { color: '#10b981' }]}>Extract PDF</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onNavigate('file_converter')}
-            style={[styles.quickPill, { backgroundColor: 'rgba(2, 132, 199, 0.12)', borderColor: 'rgba(2, 132, 199, 0.3)' }]}
-          >
-            <ArrowRightLeft size={14} color="#0284c7" />
-            <Text style={[styles.quickPillText, { color: '#0284c7' }]}>Convert</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onNavigate('md_editor')}
-            style={[styles.quickPill, { backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(139, 92, 246, 0.3)' }]}
-          >
-            <FileCode size={14} color="#8b5cf6" />
-            <Text style={[styles.quickPillText, { color: '#8b5cf6' }]}>MD Studio</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onNavigate('ocr')}
-            style={[styles.quickPill, { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderColor: 'rgba(37, 99, 235, 0.3)' }]}
-          >
-            <ScanText size={14} color="#2563eb" />
-            <Text style={[styles.quickPillText, { color: '#2563eb' }]}>OCR Image</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onNavigate('qr_reader')}
-            style={[styles.quickPill, { backgroundColor: 'rgba(13, 148, 136, 0.12)', borderColor: 'rgba(13, 148, 136, 0.3)' }]}
-          >
-            <Scan size={14} color="#0d9488" />
-            <Text style={[styles.quickPillText, { color: '#0d9488' }]}>Scan QR</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Featured Tools Section */}
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            {t.tools}
-          </Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Most used tools</Text>
           <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
-            {t.select_tool}
+            {language === 'am' ? 'በተደጋጋሚ የሚጠቀሙት' : 'Based on your recent activity'}
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={() => onNavigate('tools')}
-          style={styles.viewAllBtn}
-        >
-          <Text style={[styles.viewAllText, { color: colors.cyan }]}>
-            {t.view_all_tools}
-          </Text>
+        <TouchableOpacity onPress={() => onNavigate('tools')} style={styles.viewAllBtn}>
+          <Text style={[styles.viewAllText, { color: colors.cyan }]}>{t.view_all_tools}</Text>
           <ArrowRight size={13} color={colors.cyan} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.toolsGrid}>
-        {toolsList.map((item) => (
-          <ToolCard
-            key={item.id}
-            title={item.title}
-            description={item.description}
-            icon={item.icon}
-            color={item.color}
-            badge={item.badge}
-            onPress={() => onNavigate(item.screen)}
-          />
-        ))}
-      </View>
-
-      {/* Recent History Preview Section */}
-      {recentHistory.length > 0 && (
-        <View style={styles.historySection}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                {t.recent_activity}
-              </Text>
-              <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
-                {recentHistory.length} items logged
-              </Text>
-            </View>
-
+      <View style={styles.smartPicksWrap}>
+        {popularTools.map((item) => {
+          const Icon = item.icon;
+          return (
             <TouchableOpacity
-              onPress={() => onNavigate('history')}
-              style={styles.viewAllBtn}
-            >
-              <Text style={[styles.viewAllText, { color: colors.cyan }]}>
-                {t.history}
-              </Text>
-              <ArrowRight size={13} color={colors.cyan} />
-            </TouchableOpacity>
-          </View>
-
-          {recentHistory.slice(0, 2).map((item) => (
-            <View
               key={item.id}
+              activeOpacity={0.9}
+              onPress={() => onNavigate(item.screen)}
               style={[
-                styles.historyCard,
+                styles.smartPickCard,
                 {
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
                 },
               ]}
             >
-              <View style={styles.historyRow}>
-                <Clock size={14} color={colors.cyan} style={{ marginRight: 8 }} />
-                <Text
-                  numberOfLines={1}
-                  style={[styles.historyTitle, { color: colors.text }]}
-                >
-                  {item.title}
-                </Text>
-                {item.fileSize && (
-                  <Text style={[styles.historySize, { color: colors.textMuted }]}>
-                    {item.fileSize}
-                  </Text>
-                )}
+              <View style={[styles.smartIcon, { backgroundColor: item.color }]}>
+                <Icon size={18} color="#fff" />
               </View>
-              {item.snippet ? (
-                <Text
-                  numberOfLines={1}
-                  style={[styles.historySnippet, { color: colors.textSecondary }]}
-                >
-                  {item.snippet}
-                </Text>
-              ) : null}
-            </View>
-          ))}
+              <Text style={[styles.smartTitle, { color: colors.text }]}>{item.title}</Text>
+              <Text style={[styles.smartDescription, { color: colors.textSecondary }]}>
+                {item.description}
+              </Text>
+              <View style={styles.smartFooter}>
+                <Text style={[styles.smartBadge, { color: item.color }]}>{item.badge}</Text>
+                <ArrowRight size={12} color={item.color} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={styles.historySection}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.recent_activity}</Text>
+            <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
+              {recentHistory.length} items logged
+            </Text>
+          </View>
+
+          <TouchableOpacity onPress={() => onNavigate('history')} style={styles.viewAllBtn}>
+            <Text style={[styles.viewAllText, { color: colors.cyan }]}>{t.history}</Text>
+            <ArrowRight size={13} color={colors.cyan} />
+          </TouchableOpacity>
         </View>
-      )}
+
+        {displayHistory.map((item) => (
+          <View
+            key={item.id}
+            style={[
+              styles.historyCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <View style={styles.historyRow}>
+              <Clock size={14} color={colors.cyan} style={{ marginRight: 8 }} />
+              <Text numberOfLines={1} style={[styles.historyTitle, { color: colors.text }]}>
+                {item.title}
+              </Text>
+              {item.fileSize && (
+                <Text style={[styles.historySize, { color: colors.textMuted }]}>{item.fileSize}</Text>
+              )}
+            </View>
+            {item.snippet ? (
+              <Text numberOfLines={1} style={[styles.historySnippet, { color: colors.textSecondary }]}>
+                {item.snippet}
+              </Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
     </ScrollView>
   );
 };
@@ -320,10 +335,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 14,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -359,6 +371,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  heroMetrics: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 18,
+    gap: 10,
+  },
+  metricBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  metricValue: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  metricLabel: {
+    color: '#bae6fd',
+    fontSize: 10,
+    marginTop: 4,
+    fontWeight: '700',
+  },
   quoteBox: {
     marginTop: 12,
     paddingTop: 10,
@@ -370,6 +409,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontStyle: 'italic',
     lineHeight: 16,
+  },
+  smartPicksWrap: {
+    gap: 10,
+    marginBottom: 8,
+  },
+  smartPickCard: {
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    boxShadow: '0px 4px 12px rgba(15, 23, 42, 0.12)',
+  },
+  smartIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  smartTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  smartDescription: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  smartFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  smartBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   quickActionsWrap: {
     marginBottom: 16,

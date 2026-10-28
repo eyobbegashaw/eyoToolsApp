@@ -97,7 +97,7 @@ export const ImageToTextScreen: React.FC = () => {
   };
 
   const handleRunOcr = async () => {
-    if (!imageUri) return;
+    if (!imageUri || isProcessing) return;
 
     setIsProcessing(true);
     setProgress(10);
@@ -257,8 +257,15 @@ export const ImageToTextScreen: React.FC = () => {
           {!extractedText && (
             <TouchableOpacity
               onPress={handleRunOcr}
-              disabled={isProcessing}
-              style={[styles.recognizeBtn, { backgroundColor: colors.primary }]}
+              accessibilityState={{ disabled: isProcessing }}
+              style={[
+                styles.recognizeBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isProcessing ? 0.7 : 1,
+                  pointerEvents: isProcessing ? 'none' : 'auto',
+                },
+              ]}
             >
               {isProcessing ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>

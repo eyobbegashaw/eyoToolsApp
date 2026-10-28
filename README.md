@@ -17,7 +17,7 @@ eyoTools Mobile is a complete, standalone native Android application converted f
 | Tool | Status | Engine / Implementation | Offline / Online |
 |---|---|---|---|
 | **📄 PDF to Text** | ✅ Complete | On-device PDF-1.4 stream parser; accurately detects scanned PDFs and prompts for OCR rather than returning raw binary bytes | **100% Offline** |
-| **🔄 File Converter** | ✅ Complete | Generates **valid binary PDF-1.4 files** with xref tables and **valid OpenXML DOCX & PPTX ZIP archives** (never plain text) | **100% Offline** |
+| **🔄 File Converter** | ✅ Complete | Converts DOCX ↔ PDF, PPTX → PDF, and MD → PDF without adding converter labels to the converted document | **100% Offline** |
 | **📝 Markdown Studio** | ✅ Complete | Live side-by-side editor, syntax toolbar, CS templates, and direct export to Markdown (.md) or genuine binary PDF | **100% Offline** |
 | **🔊 PDF to Audio** | ✅ Complete | Android TTS Synthesizer (`expo-speech`), speech rate, pitch, and voice settings with progress tracking | **100% Offline** |
 | **🔍 Image to Text (OCR)**| ✅ Complete | Vision OCR Engine with native support for Latin (`eng`) & Ethiopic / Amharic (`amh` አማርኛ) script; reports real confidence & lines | **Online Engine** (Wi-Fi/Cellular) |
