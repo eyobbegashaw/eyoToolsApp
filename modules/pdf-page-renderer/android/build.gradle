@@ -1,18 +1,19 @@
-plugins {
-  id 'com.android.library'
-  id 'expo-module-gradle-plugin'
-}
+apply plugin: 'com.android.library'
 
 group = 'expo.modules.pdfpagerenderer'
 version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+useExpoPublishing()
 
 android {
   namespace "expo.modules.pdfpagerenderer"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
-  }
-  lintOptions {
-    abortOnError false
   }
 }
