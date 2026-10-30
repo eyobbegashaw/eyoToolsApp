@@ -14,7 +14,11 @@ export type ToolId =
   | 'steganography'
   | 'bg_remover'
   | 'file_converter'
-  | 'md_editor';
+  | 'md_editor'
+  | 'pdf_to_text'
+  | 'pdf_converter'
+  | 'markdown_editor'
+  | 'pdf_to_audio';
 
 export type ScreenId =
   | 'home'
@@ -30,7 +34,12 @@ export type ScreenId =
   | 'steganography'
   | 'bg_remover'
   | 'file_converter'
-  | 'md_editor';
+  | 'md_editor'
+  | 'pdf_to_text'
+  | 'pdf_converter'
+  | 'markdown_editor'
+  | 'pdf_to_audio'
+  | 'youtube';
 
 export interface HistoryItem {
   id: string;
@@ -48,6 +57,8 @@ export interface VideoQuality {
   resolution?: string;
   size: string;
   url: string;
+  type?: 'video' | 'audio';
+  isWatermarkFree?: boolean;
 }
 
 export interface VideoInfo {
@@ -56,5 +67,6 @@ export interface VideoInfo {
   duration: string;
   author: string;
   views: string;
+  platform?: 'tiktok' | 'youtube' | 'direct';
   qualities: VideoQuality[];
 }

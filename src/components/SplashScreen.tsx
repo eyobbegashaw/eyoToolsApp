@@ -42,8 +42,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         <Text style={styles.title}>eyoTools</Text>
         <Text style={styles.tagline}>
           {language === 'am'
-            ? 'የኮምፒውተር ሳይንስ ተማሪዎች እትም'
-            : 'CS Student Edition • Mobile Toolkit'}
+            ? 'ከ 8 በላይ ተወዳጅ የሆኑ መሳሪዎች ያሉት'
+            : 'A collection of 8+ popular tools'}
         </Text>
 
         <View style={styles.divider} />

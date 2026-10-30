@@ -60,10 +60,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ currentScreen, onBack, tit
               },
             ]}
           >
-            {title || (language === 'am' ? 'ኢዮ መሳሪያዎች' : 'eyoTools Mobile')}
+            {title || (language === 'am' ? 'ኢዮ መሳሪያዎች' : 'eyoTools')}
           </Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            {language === 'am' ? 'ለኮምፒውተር ሳይንስ ተማሪዎች' : 'CS Student Edition'}
+            {language === 'am' ? 'ለተማሪዎች' : 'For Student Edition'}
           </Text>
         </View>
       </View>

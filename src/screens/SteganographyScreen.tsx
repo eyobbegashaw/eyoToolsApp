@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -23,13 +24,17 @@ import {
   Sparkles,
   Info,
   Download,
+  FileText,
+  Share2,
+  RefreshCw,
+  Lock,
 } from 'lucide-react-native';
 import { SteganographyService } from '../services/steganographyService';
 import { StorageService } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 
 export const SteganographyScreen: React.FC = () => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, t, language, fontScale } = useTheme();
 
   const [mode, setMode] = useState<'hide' | 'reveal'>('hide');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -37,6 +42,12 @@ export const SteganographyScreen: React.FC = () => {
   const [revealedMessage, setRevealedMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+
+  // Download & Filename editing states
+  const [encodedUri, setEncodedUri] = useState<string | null>(null);
+  const [outputFileName, setOutputFileName] = useState<string>('stego_encoded_image.png');
+  const [exportTextFileName, setExportTextFileName] = useState<string>('revealed_secret.txt');
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const handlePickImage = async () => {
     try {
@@ -46,8 +57,27 @@ export const SteganographyScreen: React.FC = () => {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setImageUri(asset.uri);
+        setEncodedUri(null);
         setRevealedMessage(null);
+
+        if (asset.width && asset.height) {
+          setImageDimensions({ width: asset.width, height: asset.height });
+        } else {
+          setImageDimensions(null);
+        }
+
+        const assetName =
+          (asset as any).fileName || (asset.uri ? asset.uri.split('/').pop()?.split('?')[0] : '');
+        if (assetName && !assetName.startsWith('data:')) {
+          const baseName = assetName.replace(/\.[^/.]+$/, '');
+          setOutputFileName(`${baseName}_stego.png`);
+          setExportTextFileName(`${baseName}_secret.txt`);
+        } else {
+          setOutputFileName('stego_encoded_image.png');
+          setExportTextFileName('revealed_secret.txt');
+        }
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to select image');
@@ -55,45 +85,126 @@ export const SteganographyScreen: React.FC = () => {
   };
 
   const handleLoadSample = () => {
-    setImageUri('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&auto=format&fit=crop&q=80');
     if (mode === 'hide') {
+      const sampleUri = SteganographyService.createSampleCarrier();
+      setImageUri(sampleUri);
+      setEncodedUri(null);
+      setRevealedMessage(null);
       setSecretMessage('Top Secret CS Key: RSA-4096:Begashaw-2026-Confidential');
+      setOutputFileName('sample_confidential_stego.png');
+      setImageDimensions({ width: 480, height: 320 });
     } else {
-      setRevealedMessage('Decoded secret: "Algorithms rule the world. 1111111111111110"');
+      const sampleSecret =
+        'eyoTools Decoded: "Data Structures & Graph Theory Final Examination - Addis Ababa 2026"';
+      const sampleCarrierWithSecret = SteganographyService.createSampleCarrier(sampleSecret);
+      setImageUri(sampleCarrierWithSecret);
+      setEncodedUri(null);
+      setRevealedMessage(null);
+      setExportTextFileName('sample_revealed_secret.txt');
+      setImageDimensions({ width: 480, height: 320 });
     }
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     if (!imageUri || isProcessing) return;
 
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      if (mode === 'hide') {
+    if (mode === 'hide') {
+      if (!secretMessage.trim()) {
         Alert.alert(
-          t.success,
-          'Secret message embedded into PNG image bits with 16-bit termination sequence.'
+          t.error,
+          language === 'am'
+            ? 'እባክዎ የሚደበቀውን ሚስጥራዊ መልእክት ያስገቡ'
+            : 'Please enter a secret message to embed into the image.'
         );
-        StorageService.addHistoryItem({
+        return;
+      }
+
+      setIsProcessing(true);
+      try {
+        const res = await SteganographyService.encodeImage(imageUri, secretMessage.trim());
+        setEncodedUri(res.outputUri);
+        setImageDimensions({ width: res.width, height: res.height });
+
+        await StorageService.addHistoryItem({
           toolId: 'steganography',
-          title: 'Stego_Encoded_Image.png',
+          title: outputFileName,
           snippet: secretMessage.slice(0, 50) + '...',
-          fileSize: '1.2 MB',
+          fileSize: `${Math.round(res.fileSizeBytes / 1024)} KB`,
           fileType: 'PNG',
         });
-      } else {
-        const decoded =
-          'eyoTools Decoded: "Data Structures & Graph Theory Final Examination - Addis Ababa"';
-        setRevealedMessage(decoded);
-        StorageService.addHistoryItem({
-          toolId: 'steganography',
-          title: 'Stego_Decoded_Result.png',
-          snippet: decoded,
-          fileSize: '1.2 MB',
-          fileType: 'TXT',
-        });
+
+        Alert.alert(
+          language === 'am' ? 'ተጠናቋል' : 'Secret Embedded',
+          language === 'am'
+            ? 'ሚስጥራዊ መልእክቱ በምስሉ ፒክሰሎች ውስጥ በስኬት ተደብቋል! አሁን የተዘጋጀውን Stego PNG ማውረድ ይችላሉ።'
+            : 'Secret message embedded into PNG image bits with 16-bit termination sequence. You can now edit the filename and download!'
+        );
+      } catch (e: any) {
+        Alert.alert(t.error, e.message || 'Failed to encode message into image');
+      } finally {
+        setIsProcessing(false);
       }
-    }, 800);
+    } else {
+      setIsProcessing(true);
+      try {
+        const res = await SteganographyService.decodeImage(imageUri);
+        if (res.hasMessage && res.message) {
+          setRevealedMessage(res.message);
+          setImageDimensions({ width: res.width, height: res.height });
+
+          await StorageService.addHistoryItem({
+            toolId: 'steganography',
+            title: exportTextFileName,
+            snippet: res.message.slice(0, 60) + '...',
+            fileSize: `${res.message.length} chars`,
+            fileType: 'TXT',
+          });
+        } else {
+          Alert.alert(
+            t.error,
+            t.no_hidden_message ||
+              'No secret message detected in this image. Make sure you selected the uncompressed PNG generated with eyoTools.'
+          );
+        }
+      } catch (e: any) {
+        Alert.alert(t.error, e.message || 'Failed to decode secret message');
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  };
+
+  const handleDownloadStegoPng = async () => {
+    const targetUri = encodedUri || imageUri;
+    if (!targetUri) return;
+
+    try {
+      await SteganographyService.exportStegoImage(targetUri, outputFileName);
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'Success',
+        language === 'am'
+          ? `Stego PNG ፋይል "${outputFileName}" በተሳካ ሁኔታ ወርዷል`
+          : `Stego PNG image "${outputFileName}" saved successfully!`
+      );
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to export Stego PNG');
+    }
+  };
+
+  const handleDownloadSecretText = async () => {
+    if (!revealedMessage) return;
+
+    try {
+      await SteganographyService.exportTextFile(revealedMessage, exportTextFileName);
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'Success',
+        language === 'am'
+          ? `የተገኘው ስውር መልእክት "${exportTextFileName}" በተሳካ ሁኔታ ወርዷል`
+          : `Secret message text "${exportTextFileName}" exported successfully!`
+      );
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to export text file');
+    }
   };
 
   const handleCopy = async () => {
@@ -104,14 +215,24 @@ export const SteganographyScreen: React.FC = () => {
   };
 
   const handleShareEncoded = async () => {
-    if (!imageUri) return;
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(imageUri, {
-        mimeType: 'image/png',
-        dialogTitle: 'Share Stego PNG',
-      });
+    const targetUri = encodedUri || imageUri;
+    if (!targetUri) return;
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(targetUri, {
+          mimeType: 'image/png',
+          dialogTitle: `Share ${outputFileName}`,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to share image');
     }
   };
+
+  // Estimate capacity if image dimensions are known
+  const capacityChars = imageDimensions
+    ? SteganographyService.calculateCapacity(imageDimensions.width, imageDimensions.height).maxCharacters
+    : null;
 
   return (
     <ScrollView
@@ -143,6 +264,7 @@ export const SteganographyScreen: React.FC = () => {
           <TouchableOpacity
             onPress={() => {
               setMode('hide');
+              setEncodedUri(null);
               setRevealedMessage(null);
             }}
             style={[
@@ -164,6 +286,7 @@ export const SteganographyScreen: React.FC = () => {
           <TouchableOpacity
             onPress={() => {
               setMode('reveal');
+              setEncodedUri(null);
               setRevealedMessage(null);
             }}
             style={[
@@ -190,20 +313,36 @@ export const SteganographyScreen: React.FC = () => {
         >
           <ImageIcon size={16} color={colors.text} style={{ marginRight: 6 }} />
           <Text style={[styles.pickBtnText, { color: colors.text }]}>
-            {imageUri ? 'Change Carrier Image (PNG)' : 'Select Carrier Image (PNG)'}
+            {imageUri
+              ? language === 'am'
+                ? 'ምስል ቀይር (Carrier PNG)'
+                : 'Change Carrier Image (PNG)'
+              : language === 'am'
+              ? 'ምስል ምረጥ (Carrier PNG)'
+              : 'Select Carrier Image (PNG)'}
           </Text>
         </TouchableOpacity>
 
         {/* Secret Message Input (Only in Hide mode) */}
         {mode === 'hide' && (
           <View style={styles.messageWrap}>
-            <Text style={[styles.label, { color: colors.textMuted }]}>
-              {t.enter_secret_message}
-            </Text>
+            <View style={styles.labelRow}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>
+                {t.enter_secret_message}
+              </Text>
+              {capacityChars !== null && (
+                <Text style={[styles.capacityText, { color: colors.textMuted }]}>
+                  {secretMessage.length} / {capacityChars.toLocaleString()} chars
+                </Text>
+              )}
+            </View>
             <TextInput
               multiline
               value={secretMessage}
-              onChangeText={setSecretMessage}
+              onChangeText={(txt) => {
+                setSecretMessage(txt);
+                setEncodedUri(null);
+              }}
               placeholder={t.secret_placeholder}
               placeholderTextColor={colors.textMuted}
               style={[
@@ -218,18 +357,25 @@ export const SteganographyScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Load Sample Button */}
         <TouchableOpacity
           onPress={handleLoadSample}
           style={[styles.sampleBtn, { backgroundColor: colors.cardSecondary }]}
         >
           <Sparkles size={14} color="#f59e0b" style={{ marginRight: 6 }} />
           <Text style={[styles.sampleBtnText, { color: colors.textSecondary }]}>
-            Load Sample Confidential Carrier
+            {mode === 'hide'
+              ? language === 'am'
+                ? 'የናሙና ሚስጥራዊ ምስል ጫን'
+                : 'Load Sample Confidential Carrier'
+              : language === 'am'
+              ? 'የተደበቀበት የናሙና ምስል ጫን'
+              : 'Load Sample Encoded Carrier'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Image Preview & Action */}
+      {/* Image Preview & Action Card */}
       {imageUri && (
         <View
           style={[
@@ -237,33 +383,134 @@ export const SteganographyScreen: React.FC = () => {
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
           ]}
         >
-          <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+          {/* Active Preview */}
+          <View style={[styles.imagePreviewWrap, { backgroundColor: colors.cardSecondary }]}>
+            <Image
+              source={{ uri: encodedUri || imageUri }}
+              style={styles.imagePreview}
+              resizeMode="contain"
+            />
+          </View>
 
-          <TouchableOpacity
-            onPress={handleProcess}
-            accessibilityState={{ disabled: isProcessing }}
-            style={[
-              styles.processBtn,
-              {
-                backgroundColor: colors.primary,
-                opacity: isProcessing ? 0.7 : 1,
-                pointerEvents: isProcessing ? 'none' : 'auto',
-              },
-            ]}
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.processBtnText}>
-                {mode === 'hide' ? t.mode_hide : t.mode_reveal}
+          {/* Status Badge when message encoded */}
+          {mode === 'hide' && encodedUri && (
+            <View style={styles.statusBadgeRow}>
+              <CheckCircle2 size={13} color="#10b981" style={{ marginRight: 5 }} />
+              <Text style={styles.statusBadgeText}>
+                {language === 'am'
+                  ? 'ሚስጥራዊ መልእክቱ ተደብቋል • 16-bit LSB Lossless PNG'
+                  : 'Secret Message Embedded • 16-bit LSB Lossless PNG'}
               </Text>
-            )}
-          </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Action Button: Hide / Reveal */}
+          {(!encodedUri || mode === 'reveal') && (
+            <TouchableOpacity
+              onPress={handleProcess}
+              disabled={isProcessing}
+              style={[
+                styles.processBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isProcessing ? 0.7 : 1,
+                },
+              ]}
+            >
+              {isProcessing ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.processBtnText}>
+                    {mode === 'hide' ? t.hiding_message : t.revealing_message}
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {mode === 'hide' ? (
+                    <Lock size={15} color="#fff" style={{ marginRight: 6 }} />
+                  ) : (
+                    <Eye size={15} color="#fff" style={{ marginRight: 6 }} />
+                  )}
+                  <Text style={styles.processBtnText}>
+                    {mode === 'hide' ? t.mode_hide : t.mode_reveal}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Download & Editable Filename Section (Hide Mode Result) */}
+          {mode === 'hide' && encodedUri && (
+            <View style={styles.exportSection}>
+              {/* Editable Output File Name */}
+              <Text style={[styles.label, { color: colors.textMuted, marginBottom: 5 }]}>
+                {language === 'am' ? 'የፋይል ስም (.png):' : 'Output File Name (.png):'}
+              </Text>
+              <View
+                style={[
+                  styles.filenameInputWrap,
+                  { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+                ]}
+              >
+                <FileText size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  value={outputFileName}
+                  onChangeText={setOutputFileName}
+                  placeholder="stego_encoded_image.png"
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.filenameInput,
+                    { color: colors.text, fontSize: 12 * fontScale },
+                  ]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              {/* Action Buttons: Re-encode & Download */}
+              <View style={styles.exportButtonsRow}>
+                <TouchableOpacity
+                  onPress={() => setEncodedUri(null)}
+                  style={[
+                    styles.secondaryBtn,
+                    { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+                  ]}
+                >
+                  <RefreshCw size={14} color={colors.text} style={{ marginRight: 5 }} />
+                  <Text style={[styles.secondaryBtnText, { color: colors.text }]}>
+                    {language === 'am' ? 'እንደገና ቀይር' : 'Edit'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleDownloadStegoPng}
+                  style={[styles.downloadBtn, { backgroundColor: '#10b981' }]}
+                >
+                  <Download size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.downloadBtnText}>
+                    {language === 'am' ? 'Stego PNG አውርድ' : 'Download Stego PNG'}
+                  </Text>
+                </TouchableOpacity>
+
+                {Platform.OS !== 'web' && (
+                  <TouchableOpacity
+                    onPress={handleShareEncoded}
+                    style={[
+                      styles.shareBtn,
+                      { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+                    ]}
+                  >
+                    <Share2 size={15} color={colors.text} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       )}
 
-      {/* Revealed Secret Message Result */}
-      {revealedMessage && (
+      {/* Revealed Secret Message Result (Reveal Mode) */}
+      {mode === 'reveal' && revealedMessage && (
         <View
           style={[
             styles.resultCard,
@@ -285,29 +532,69 @@ export const SteganographyScreen: React.FC = () => {
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={handleCopy}
+          {/* Editable File Name for Extracted Secret Text */}
+          <Text style={[styles.label, { color: colors.textMuted, marginBottom: 5 }]}>
+            {language === 'am' ? 'የፋይል ስም (.txt):' : 'Save Secret As (.txt):'}
+          </Text>
+          <View
             style={[
-              styles.copyBtn,
-              {
-                backgroundColor: copied
-                  ? 'rgba(16, 185, 129, 0.15)'
-                  : colors.cardSecondary,
-              },
+              styles.filenameInputWrap,
+              { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
             ]}
           >
-            {copied ? (
-              <>
-                <CheckCircle2 size={15} color="#10b981" style={{ marginRight: 6 }} />
-                <Text style={[styles.copyBtnText, { color: '#10b981' }]}>{t.copied}</Text>
-              </>
-            ) : (
-              <>
-                <Copy size={15} color={colors.text} style={{ marginRight: 6 }} />
-                <Text style={[styles.copyBtnText, { color: colors.text }]}>{t.copy}</Text>
-              </>
-            )}
-          </TouchableOpacity>
+            <FileText size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              value={exportTextFileName}
+              onChangeText={setExportTextFileName}
+              placeholder="revealed_secret.txt"
+              placeholderTextColor={colors.textMuted}
+              style={[
+                styles.filenameInput,
+                { color: colors.text, fontSize: 12 * fontScale },
+              ]}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          {/* Action Row: Copy & Download TXT */}
+          <View style={styles.exportButtonsRow}>
+            <TouchableOpacity
+              onPress={handleCopy}
+              style={[
+                styles.secondaryBtn,
+                {
+                  backgroundColor: copied
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : colors.cardSecondary,
+                  borderColor: copied ? '#10b981' : colors.cardBorder,
+                  flex: 1,
+                },
+              ]}
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 size={15} color="#10b981" style={{ marginRight: 6 }} />
+                  <Text style={[styles.secondaryBtnText, { color: '#10b981' }]}>{t.copied}</Text>
+                </>
+              ) : (
+                <>
+                  <Copy size={15} color={colors.text} style={{ marginRight: 6 }} />
+                  <Text style={[styles.secondaryBtnText, { color: colors.text }]}>{t.copy}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleDownloadSecretText}
+              style={[styles.downloadBtn, { backgroundColor: '#10b981', flex: 1.4 }]}
+            >
+              <Download size={15} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.downloadBtnText}>
+                {language === 'am' ? 'TXT አውርድ' : 'Download TXT'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -399,10 +686,19 @@ const styles = StyleSheet.create({
   messageWrap: {
     marginBottom: 10,
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   label: {
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 6,
+  },
+  capacityText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   textArea: {
     height: 80,
@@ -427,11 +723,33 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
+  imagePreviewWrap: {
+    width: '100%',
+    height: 190,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   imagePreview: {
     width: '100%',
-    height: 180,
-    borderRadius: 12,
+    height: '100%',
+  },
+  statusBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10b981',
   },
   processBtn: {
     height: 44,
@@ -443,6 +761,60 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  exportSection: {
+    marginTop: 4,
+  },
+  filenameInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    marginBottom: 12,
+  },
+  filenameInput: {
+    flex: 1,
+    height: 40,
+  },
+  exportButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  secondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  downloadBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 42,
+    borderRadius: 12,
+  },
+  downloadBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  shareBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   resultCard: {
     borderRadius: 20,
@@ -479,17 +851,6 @@ const styles = StyleSheet.create({
   resultText: {
     lineHeight: 18,
     fontFamily: 'monospace',
-  },
-  copyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 40,
-    borderRadius: 12,
-  },
-  copyBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   infoCard: {
     flexDirection: 'row',

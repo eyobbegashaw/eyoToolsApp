@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import * as Speech from 'expo-speech';
 import * as DocumentPicker from 'expo-document-picker';
@@ -19,15 +21,19 @@ import {
   Info,
   Sliders,
   Globe,
+  Download,
+  Music,
 } from 'lucide-react-native';
 import { PDFService } from '../services/pdfService';
+import { AudioExportService } from '../services/audioExportService';
+import { StorageService } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 
 export const PdfToAudioScreen: React.FC = () => {
   const { colors, t, language, fontScale } = useTheme();
 
   const [textToRead, setTextToRead] = useState<string>(
-    'Welcome to eyoTools Mobile. CS Student Edition. The offline audio reading engine converts your textbooks and notes into natural speech.'
+    'Welcome to eyoTools Mobile. Students Edition. The offline audio reading engine converts your textbooks and notes into natural speech.'
   );
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
@@ -35,12 +41,133 @@ export const PdfToAudioScreen: React.FC = () => {
   const [ttsLang, setTtsLang] = useState<'en-US' | 'am-ET'>(
     language === 'am' ? 'am-ET' : 'en-US'
   );
+  const [audioFileName, setAudioFileName] = useState<string>('document_audio.mp3');
+  const [isExportingAudio, setIsExportingAudio] = useState<boolean>(false);
+
+  const webAudioRef = useRef<any>(null);
+  const [femaleVoiceId, setFemaleVoiceId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    async function loadVoices() {
+      try {
+        const voices = await Speech.getAvailableVoicesAsync();
+        const langPrefix = ttsLang.slice(0, 2).toLowerCase();
+        const fVoice = voices.find((v) => {
+          const l = (v.language || '').toLowerCase();
+          const n = (v.name || '').toLowerCase();
+          const id = (v.identifier || '').toLowerCase();
+          return (
+            l.startsWith(langPrefix) &&
+            (n.includes('female') ||
+              n.includes('zira') ||
+              n.includes('google') ||
+              n.includes('jenny') ||
+              n.includes('samantha') ||
+              n.includes('victoria') ||
+              n.includes('karen') ||
+              id.includes('female'))
+          );
+        });
+        if (fVoice) {
+          setFemaleVoiceId(fVoice.identifier);
+        }
+      } catch {
+        // Fallback gracefully if voices enumeration is unsupported
+      }
+    }
+    loadVoices();
+  }, [ttsLang]);
+
+  useEffect(() => {
+    if (webAudioRef.current) {
+      try {
+        webAudioRef.current.playbackRate = speechRate;
+      } catch {}
+    }
+  }, [speechRate]);
 
   useEffect(() => {
     return () => {
       Speech.stop();
+      if (webAudioRef.current) {
+        try {
+          webAudioRef.current.pause();
+          webAudioRef.current = null;
+        } catch {}
+      }
     };
   }, []);
+
+  const handleStop = () => {
+    Speech.stop();
+    if (webAudioRef.current) {
+      try {
+        webAudioRef.current.pause();
+        webAudioRef.current.currentTime = 0;
+        webAudioRef.current = null;
+      } catch {}
+    }
+    setIsPlaying(false);
+  };
+
+  const handlePlay = () => {
+    if (!textToRead.trim()) return;
+
+    if (isPlaying) {
+      handleStop();
+      return;
+    }
+
+    setIsPlaying(true);
+
+    if (Platform.OS === 'web') {
+      try {
+        const audioUrl = AudioExportService.getTtsAudioUrl(textToRead, ttsLang);
+        const audio = new Audio(audioUrl);
+        audio.playbackRate = speechRate;
+        audio.onended = () => {
+          setIsPlaying(false);
+          webAudioRef.current = null;
+        };
+        audio.onerror = () => {
+          Speech.speak(textToRead, {
+            language: ttsLang,
+            voice: femaleVoiceId,
+            rate: speechRate,
+            pitch: speechPitch,
+            onDone: () => setIsPlaying(false),
+            onError: () => setIsPlaying(false),
+          });
+        };
+        audio.play().catch(() => {
+          Speech.speak(textToRead, {
+            language: ttsLang,
+            voice: femaleVoiceId,
+            rate: speechRate,
+            pitch: speechPitch,
+            onDone: () => setIsPlaying(false),
+            onError: () => setIsPlaying(false),
+          });
+        });
+        webAudioRef.current = audio;
+        return;
+      } catch {
+        // Fallback to Speech.speak
+      }
+    }
+
+    Speech.speak(textToRead, {
+      language: ttsLang,
+      voice: femaleVoiceId,
+      rate: speechRate,
+      pitch: speechPitch,
+      onDone: () => setIsPlaying(false),
+      onError: (e) => {
+        setIsPlaying(false);
+        console.warn('Speech error', e);
+      },
+    });
+  };
 
   const handlePickDocument = async () => {
     try {
@@ -55,37 +182,14 @@ export const PdfToAudioScreen: React.FC = () => {
         if (res.text) {
           setTextToRead(res.text.slice(0, 3000));
         }
+        if (file.name) {
+          const baseName = file.name.replace(/\.[^/.]+$/, '');
+          setAudioFileName(`${baseName}_audio.mp3`);
+        }
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to read PDF document');
     }
-  };
-
-  const handlePlay = () => {
-    if (!textToRead.trim()) return;
-
-    if (isPlaying) {
-      Speech.stop();
-      setIsPlaying(false);
-      return;
-    }
-
-    setIsPlaying(true);
-    Speech.speak(textToRead, {
-      language: ttsLang,
-      rate: speechRate,
-      pitch: speechPitch,
-      onDone: () => setIsPlaying(false),
-      onError: (e) => {
-        setIsPlaying(false);
-        console.warn('Speech error', e);
-      },
-    });
-  };
-
-  const handleStop = () => {
-    Speech.stop();
-    setIsPlaying(false);
   };
 
   const handleLoadSample = () => {
@@ -94,6 +198,42 @@ export const PdfToAudioScreen: React.FC = () => {
         ? 'እንኳን ወደ ኢዮ መሳሪያዎች የድምጽ አንባቢ በደህና መጡ። ይህ መተግበሪያ ሰነዶችን በቀላሉ ወደ ድምጽ ይቀይራል።'
         : 'Binary Search is an efficient algorithm for finding an item from a sorted list of items. It works by repeatedly dividing in half the portion of the list that could contain the item.'
     );
+    setAudioFileName(language === 'am' ? 'amharic_sample.mp3' : 'binary_search_notes.mp3');
+  };
+
+  const handleDownloadAudio = async () => {
+    if (!textToRead.trim()) {
+      Alert.alert(t.error, 'Please enter or load text to generate audio.');
+      return;
+    }
+
+    setIsExportingAudio(true);
+    try {
+      const result = await AudioExportService.exportAudio(
+        textToRead,
+        audioFileName,
+        ttsLang
+      );
+
+      await StorageService.addHistoryItem({
+        toolId: 'pdf_audio',
+        title: result.outputFileName,
+        snippet: textToRead.slice(0, 100) + '...',
+        fileSize: (result.fileSizeBytes / 1024).toFixed(1) + ' KB',
+        fileType: 'AUDIO',
+      });
+
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'Success',
+        language === 'am'
+          ? `የድምጽ ፋይል "${result.outputFileName}" በተሳካ ሁኔታ ተዘጋጅቷል።`
+          : `Audio file "${result.outputFileName}" ready!`
+      );
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to download audio file');
+    } finally {
+      setIsExportingAudio(false);
+    }
   };
 
   return (
@@ -220,6 +360,21 @@ export const PdfToAudioScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Voice Uniformity Indicator */}
+        <View
+          style={[
+            styles.voiceNoteWrap,
+            { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+          ]}
+        >
+          <Sparkles size={13} color="#10b981" style={{ marginRight: 6 }} />
+          <Text style={[styles.voiceNoteText, { color: colors.textSecondary }]}>
+            {language === 'am'
+              ? 'ተፈጥሯዊ የድምጽ ቃና፦ ማዳመጫው እና የወረደው ኦዲዮ ተመሳሳይ ድምጽ ይጠቀማሉ።'
+              : 'Natural Voice: Live playback and downloaded audio use the exact same voice.'}
+          </Text>
+        </View>
+
         {/* Speed / Rate Stepper */}
         <Text style={[styles.settingLabel, { color: colors.textMuted, marginTop: 14 }]}>
           {t.speed}: {speechRate}x
@@ -282,6 +437,81 @@ export const PdfToAudioScreen: React.FC = () => {
         </View>
       </View>
 
+      {/* Audio Download & Export Card */}
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.card, borderColor: colors.cardBorder },
+        ]}
+      >
+        <View style={styles.downloadHeaderRow}>
+          <View style={[styles.downloadIconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+            <Music size={18} color="#10b981" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 2 }]}>
+              {language === 'am' ? 'የድምጽ ፋይል አውርድ' : 'Download Audio File'}
+            </Text>
+            <Text style={[styles.downloadSubtitle, { color: colors.textMuted }]}>
+              {language === 'am'
+                ? 'የፋይል ስሙን አስተካክለው ድምጹን በቀጥታ ያውርዱ'
+                : 'Edit output file name and download high-quality audio'}
+            </Text>
+          </View>
+        </View>
+
+        {/* File Name Input */}
+        <Text style={[styles.settingLabel, { color: colors.textMuted, marginTop: 12 }]}>
+          {language === 'am' ? 'የድምጽ ፋይል ስም (.mp3 / .wav)' : 'Audio File Name (.mp3 / .wav)'}
+        </Text>
+        <View
+          style={[
+            styles.fileNameInputWrap,
+            { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+          ]}
+        >
+          <Music size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+          <TextInput
+            value={audioFileName}
+            onChangeText={setAudioFileName}
+            placeholder="document_audio.mp3"
+            placeholderTextColor={colors.textMuted}
+            style={[
+              styles.fileNameInput,
+              { color: colors.text, fontSize: 12 * fontScale },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+
+        {/* Download Action Button */}
+        <TouchableOpacity
+          onPress={handleDownloadAudio}
+          disabled={isExportingAudio}
+          style={[
+            styles.downloadBtn,
+            { backgroundColor: isExportingAudio ? colors.cardSecondary : '#10b981' },
+          ]}
+        >
+          {isExportingAudio ? (
+            <View style={styles.downloadingRow}>
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />
+              <Text style={[styles.downloadBtnText, { color: colors.text }]}>
+                {language === 'am' ? 'ድምጽ እየተፈጠረ ነው...' : 'Generating & Downloading Audio...'}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Download size={16} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.downloadBtnText}>
+                {language === 'am' ? 'ድምጹን አውርድ' : 'Download Audio File'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Info Callouts */}
       <View
         style={[
@@ -291,18 +521,6 @@ export const PdfToAudioScreen: React.FC = () => {
       >
         <Info size={15} color="#0284c7" style={{ marginRight: 8, marginTop: 2 }} />
         <Text style={styles.infoText}>{t.amharic_voice_note}</Text>
-      </View>
-
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.textMuted} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          {t.tts_export_limitation}
-        </Text>
       </View>
     </ScrollView>
   );
@@ -434,6 +652,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  downloadHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  downloadIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadSubtitle: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  fileNameInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+    marginBottom: 14,
+  },
+  fileNameInput: {
+    flex: 1,
+    height: 44,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: 12,
+  },
+  downloadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   infoCard: {
     flexDirection: 'row',
     padding: 12,
@@ -444,6 +709,20 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 11,
     lineHeight: 16,
+    flex: 1,
+  },
+  voiceNoteWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  voiceNoteText: {
+    fontSize: 11,
+    fontWeight: '500',
     flex: 1,
   },
 });

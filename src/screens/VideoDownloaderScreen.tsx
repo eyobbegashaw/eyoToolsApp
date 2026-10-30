@@ -9,18 +9,21 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import {
   Video,
   Download,
   CheckCircle2,
-  AlertCircle,
   Sparkles,
   Info,
-  XCircle,
   Music,
   Share2,
+  FileText,
+  ShieldCheck,
+  Sliders,
+  Check,
 } from 'lucide-react-native';
 import { VideoDownloaderService } from '../services/videoDownloaderService';
 import { StorageService } from '../services/storageService';
@@ -28,12 +31,15 @@ import { VideoInfo, VideoQuality } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 
 export const VideoDownloaderScreen: React.FC = () => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, t, language, fontScale } = useTheme();
 
   const [url, setUrl] = useState<string>('');
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [selectedQuality, setSelectedQuality] = useState<VideoQuality | null>(null);
+  const [formatFilter, setFormatFilter] = useState<'all' | 'video' | 'audio'>('all');
+  const [outputFileName, setOutputFileName] = useState<string>('media_download.mp4');
+
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [bytesWritten, setBytesWritten] = useState<number>(0);
@@ -42,7 +48,6 @@ export const VideoDownloaderScreen: React.FC = () => {
   const [downloadedFileUri, setDownloadedFileUri] = useState<string | null>(null);
 
   const activeDownloaderRef = useRef<any>(null);
-
   const sampleUrls = VideoDownloaderService.getSampleUrls();
 
   const formatSize = (bytes: number): string => {
@@ -63,13 +68,33 @@ export const VideoDownloaderScreen: React.FC = () => {
     try {
       const info = await VideoDownloaderService.fetchVideoInfo(url);
       setVideoInfo(info);
+
       if (info.qualities.length > 0) {
-        setSelectedQuality(info.qualities[0]);
+        // Default to best video stream if available, otherwise first stream
+        const initialQuality =
+          info.qualities.find((q) => q.type === 'video' || q.format === 'mp4') ||
+          info.qualities[0];
+        setSelectedQuality(initialQuality);
+
+        const safeTitle = (info.title || 'media_file')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .slice(0, 36);
+        setOutputFileName(`${safeTitle}.${initialQuality.format}`);
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to analyze stream URL');
     } finally {
       setIsFetching(false);
+    }
+  };
+
+  const handleSelectQuality = (q: VideoQuality) => {
+    setSelectedQuality(q);
+    if (videoInfo) {
+      const safeTitle = (videoInfo.title || 'media_file')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .slice(0, 36);
+      setOutputFileName(`${safeTitle}.${q.format}`);
     }
   };
 
@@ -84,14 +109,17 @@ export const VideoDownloaderScreen: React.FC = () => {
     setDownloadedFileUri(null);
 
     try {
-      const safeTitle = (videoInfo.title || 'media_file')
-        .replace(/[^a-zA-Z0-9_-]/g, '_')
-        .slice(0, 40);
-      const targetFileName = `${safeTitle}.${selectedQuality.format}`;
+      let cleanTargetName = outputFileName.trim().replace(/[/\\?%*:|"<>]/g, '_');
+      if (!cleanTargetName) {
+        cleanTargetName = `download.${selectedQuality.format}`;
+      }
+      if (!cleanTargetName.toLowerCase().endsWith(`.${selectedQuality.format}`)) {
+        cleanTargetName = `${cleanTargetName}.${selectedQuality.format}`;
+      }
 
       const downloader = VideoDownloaderService.createDownloader(
         selectedQuality.url,
-        targetFileName,
+        cleanTargetName,
         (percent, written, total) => {
           if (percent >= 0) {
             setProgress(percent);
@@ -111,11 +139,18 @@ export const VideoDownloaderScreen: React.FC = () => {
 
       await StorageService.addHistoryItem({
         toolId: 'youtube',
-        title: videoInfo.title,
-        snippet: `${selectedQuality.label} • Saved to Device`,
+        title: cleanTargetName,
+        snippet: `${selectedQuality.label} • ${videoInfo.author}`,
         fileSize: formatSize(result.sizeBytes),
         fileType: selectedQuality.format.toUpperCase(),
       });
+
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'Download Complete',
+        language === 'am'
+          ? `ፋይል "${cleanTargetName}" በተሳካ ሁኔታ ወርዷል`
+          : `File "${cleanTargetName}" downloaded successfully!`
+      );
     } catch (e: any) {
       setIsDownloading(false);
       if (e.message?.includes('pause') || e.message?.includes('cancel')) {
@@ -139,10 +174,31 @@ export const VideoDownloaderScreen: React.FC = () => {
   };
 
   const handleShareDownloaded = async () => {
-    if (downloadedFileUri && (await Sharing.isAvailableAsync())) {
-      await Sharing.shareAsync(downloadedFileUri);
+    if (activeDownloaderRef.current && activeDownloaderRef.current.share) {
+      await activeDownloaderRef.current.share();
+      return;
+    }
+
+    if (downloadedFileUri) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({
+            title: outputFileName,
+            url: downloadedFileUri,
+          });
+        } catch {}
+      } else if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadedFileUri);
+      }
     }
   };
+
+  // Filtered qualities based on selected format tab
+  const displayedQualities = videoInfo?.qualities.filter((q) => {
+    if (formatFilter === 'video') return q.type === 'video' || q.format === 'mp4';
+    if (formatFilter === 'audio') return q.type === 'audio' || q.format === 'mp3';
+    return true;
+  });
 
   return (
     <ScrollView
@@ -164,7 +220,9 @@ export const VideoDownloaderScreen: React.FC = () => {
           <View style={styles.headerTextWrap}>
             <Text style={[styles.title, { color: colors.text }]}>{t.youtube}</Text>
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              {t.youtube_desc}
+              {language === 'am'
+                ? 'YouTube፣ TikTok (ያለ ዋተርማርክ) እና ማንኛውንም የቪዲዮ አድራሻ በቀላሉ አውርድ'
+                : 'Download YouTube, TikTok (No Watermark), and direct media streams'}
             </Text>
           </View>
         </View>
@@ -176,7 +234,7 @@ export const VideoDownloaderScreen: React.FC = () => {
         <TextInput
           value={url}
           onChangeText={setUrl}
-          placeholder="https://... direct .mp4, .webm, or media stream"
+          placeholder="Paste YouTube, TikTok, or direct stream link..."
           placeholderTextColor={colors.textMuted}
           style={[
             styles.input,
@@ -186,53 +244,59 @@ export const VideoDownloaderScreen: React.FC = () => {
               fontSize: 12 * fontScale,
             },
           ]}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
 
         <TouchableOpacity
           onPress={handleFetchInfo}
-          accessibilityState={{ disabled: isFetching || !url.trim() }}
+          disabled={isFetching || !url.trim()}
           style={[
             styles.analyzeBtn,
             {
               backgroundColor: '#dc2626',
               opacity: isFetching || !url.trim() ? 0.6 : 1,
-              pointerEvents: isFetching || !url.trim() ? 'none' : 'auto',
             },
           ]}
         >
           {isFetching ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.analyzeBtnText}>{t.fetching_info}</Text>
+            </View>
           ) : (
-            <>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Sparkles size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.analyzeBtnText}>Inspect Media Stream</Text>
-            </>
+              <Text style={styles.analyzeBtnText}>
+                {language === 'am' ? 'ቪዲዮውን መርምር' : 'Inspect & Extract Streams'}
+              </Text>
+            </View>
           )}
         </TouchableOpacity>
 
-        {/* Sample Direct URLs */}
+        {/* Sample Direct & Platform URLs */}
         <View style={styles.sampleSection}>
           <Text style={[styles.sampleTitle, { color: colors.textMuted }]}>
-            Verified Sample Direct Media Streams:
+            {language === 'am' ? 'የተፈቀዱ የሙከራ አድራሻዎች:' : 'Try Verified Media Streams:'}
           </Text>
-          {sampleUrls.map((s, idx) => (
-            <TouchableOpacity
-              key={idx}
-              onPress={() => {
-                setUrl(s.url);
-                setVideoInfo(null);
-                setDownloadSuccess(false);
-              }}
-              style={[styles.sampleItem, { backgroundColor: colors.cardSecondary }]}
-            >
-              <Text
-                style={[styles.sampleItemText, { color: colors.textSecondary }]}
-                numberOfLines={1}
+          <View style={styles.samplePillsRow}>
+            {sampleUrls.map((s, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setUrl(s.url);
+                  setVideoInfo(null);
+                  setDownloadSuccess(false);
+                }}
+                style={[styles.samplePill, { backgroundColor: colors.cardSecondary }]}
               >
-                • {s.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Sparkles size={11} color="#dc2626" style={{ marginRight: 4 }} />
+                <Text style={[styles.samplePillText, { color: colors.textSecondary }]}>
+                  {s.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
 
@@ -244,61 +308,179 @@ export const VideoDownloaderScreen: React.FC = () => {
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
           ]}
         >
+          {/* Thumbnail & Badges */}
           <View style={styles.thumbnailContainer}>
-            <Image source={{ uri: videoInfo.thumbnail }} style={styles.thumbnail} />
+            <Image
+              source={{ uri: videoInfo.thumbnail }}
+              style={styles.thumbnail}
+              resizeMode="cover"
+            />
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{videoInfo.duration}</Text>
             </View>
+            {videoInfo.platform === 'tiktok' && (
+              <View style={styles.watermarkFreeBadge}>
+                <ShieldCheck size={12} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={styles.watermarkFreeBadgeText}>No Watermark</Text>
+              </View>
+            )}
           </View>
 
-          <Text style={[styles.videoTitle, { color: colors.text }]}>
+          <Text style={[styles.videoTitle, { color: colors.text }]} numberOfLines={2}>
             {videoInfo.title}
           </Text>
           <Text style={[styles.videoAuthor, { color: colors.textMuted }]}>
-            Host: {videoInfo.author} • {videoInfo.views}
+            {videoInfo.author} • {videoInfo.views}
           </Text>
+
+          {/* Format Type Selector Tabs */}
+          <View style={[styles.filterTabsRow, { backgroundColor: colors.cardSecondary }]}>
+            <TouchableOpacity
+              onPress={() => setFormatFilter('all')}
+              style={[
+                styles.filterTab,
+                { backgroundColor: formatFilter === 'all' ? colors.primary : 'transparent' },
+              ]}
+            >
+              <Sliders size={13} color={formatFilter === 'all' ? '#fff' : colors.textSecondary} />
+              <Text
+                style={[
+                  styles.filterTabText,
+                  { color: formatFilter === 'all' ? '#fff' : colors.textSecondary },
+                ]}
+              >
+                {language === 'am' ? 'ሁሉም' : 'All Streams'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setFormatFilter('video')}
+              style={[
+                styles.filterTab,
+                { backgroundColor: formatFilter === 'video' ? colors.primary : 'transparent' },
+              ]}
+            >
+              <Video size={13} color={formatFilter === 'video' ? '#fff' : colors.textSecondary} />
+              <Text
+                style={[
+                  styles.filterTabText,
+                  { color: formatFilter === 'video' ? '#fff' : colors.textSecondary },
+                ]}
+              >
+                {language === 'am' ? 'ቪዲዮ (MP4)' : 'Video (MP4)'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setFormatFilter('audio')}
+              style={[
+                styles.filterTab,
+                { backgroundColor: formatFilter === 'audio' ? colors.primary : 'transparent' },
+              ]}
+            >
+              <Music size={13} color={formatFilter === 'audio' ? '#fff' : colors.textSecondary} />
+              <Text
+                style={[
+                  styles.filterTabText,
+                  { color: formatFilter === 'audio' ? '#fff' : colors.textSecondary },
+                ]}
+              >
+                {language === 'am' ? 'ድምጽ (MP3)' : 'Audio (MP3)'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Quality List */}
           <Text style={[styles.qualityLabel, { color: colors.textMuted }]}>
-            Select Stream / Quality:
+            {t.select_quality}:
           </Text>
-          {videoInfo.qualities.map((q, idx) => {
-            const isSelected = selectedQuality?.label === q.label;
-            return (
-              <TouchableOpacity
-                key={idx}
-                onPress={() => setSelectedQuality(q)}
-                style={[
-                  styles.qualityOption,
-                  {
-                    backgroundColor: isSelected
-                      ? 'rgba(220, 38, 38, 0.1)'
-                      : colors.cardSecondary,
-                    borderColor: isSelected ? '#dc2626' : colors.cardBorder,
-                  },
-                ]}
-              >
-                <View style={styles.qualityInfo}>
-                  <Text style={[styles.qualityName, { color: colors.text }]}>
-                    {q.label}
-                  </Text>
-                  <Text style={[styles.qualityMeta, { color: colors.textMuted }]}>
-                    Format: {q.format.toUpperCase()} • Size: {q.size}
-                  </Text>
-                </View>
-                {isSelected && <CheckCircle2 size={18} color="#dc2626" />}
-              </TouchableOpacity>
-            );
-          })}
+          <View style={styles.qualitiesList}>
+            {displayedQualities && displayedQualities.length > 0 ? (
+              displayedQualities.map((q, idx) => {
+                const isSelected = selectedQuality?.label === q.label;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    onPress={() => handleSelectQuality(q)}
+                    style={[
+                      styles.qualityOption,
+                      {
+                        backgroundColor: isSelected
+                          ? 'rgba(220, 38, 38, 0.08)'
+                          : colors.cardSecondary,
+                        borderColor: isSelected ? '#dc2626' : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <View style={styles.qualityInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.qualityName, { color: colors.text }]}>
+                          {q.label}
+                        </Text>
+                        {q.isWatermarkFree && (
+                          <View style={styles.cleanBadge}>
+                            <Text style={styles.cleanBadgeText}>✓ No Watermark</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.qualityMeta, { color: colors.textMuted }]}>
+                        {q.format.toUpperCase()} • {q.resolution || 'Direct'} • {q.size}
+                      </Text>
+                    </View>
+                    {isSelected && <CheckCircle2 size={18} color="#dc2626" />}
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <Text style={[styles.emptyFilterText, { color: colors.textMuted }]}>
+                No streams matching the selected filter.
+              </Text>
+            )}
+          </View>
 
-          {/* Download Action */}
+          {/* Editable Output File Name */}
+          <View style={styles.filenameSection}>
+            <Text style={[styles.label, { color: colors.textMuted, marginBottom: 5 }]}>
+              {language === 'am' ? 'የፋይል ስም:' : 'Output File Name:'}
+            </Text>
+            <View
+              style={[
+                styles.filenameInputWrap,
+                { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+              ]}
+            >
+              <FileText size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
+              <TextInput
+                value={outputFileName}
+                onChangeText={setOutputFileName}
+                placeholder="media_download.mp4"
+                placeholderTextColor={colors.textMuted}
+                style={[
+                  styles.filenameInput,
+                  { color: colors.text, fontSize: 12 * fontScale },
+                ]}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          {/* Download Action & Progress */}
           {!isDownloading && !downloadSuccess && (
             <TouchableOpacity
               onPress={handleDownload}
               style={[styles.downloadBtn, { backgroundColor: '#dc2626' }]}
             >
               <Download size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.downloadBtnText}>{t.download}</Text>
+              <Text style={styles.downloadBtnText}>
+                {selectedQuality?.format === 'mp3'
+                  ? language === 'am'
+                    ? 'ድምጽ አውርድ (MP3)'
+                    : 'Download Audio (MP3)'
+                  : language === 'am'
+                  ? 'ቪዲዮ አውርድ (MP4)'
+                  : 'Download Video (MP4)'}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -338,15 +520,33 @@ export const VideoDownloaderScreen: React.FC = () => {
                 <Text style={styles.successText}>{t.download_complete}</Text>
               </View>
               <Text style={[styles.savedPathText, { color: colors.textMuted }]}>
-                File saved locally: {videoInfo.title}.{selectedQuality?.format}
+                {language === 'am' ? 'ፋይሉ ተቀምጧል:' : 'File saved:'} {outputFileName}
               </Text>
-              <TouchableOpacity
-                onPress={handleShareDownloaded}
-                style={[styles.shareBtn, { backgroundColor: colors.primary }]}
-              >
-                <Share2 size={15} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.shareBtnText}>Open / Share Downloaded File</Text>
-              </TouchableOpacity>
+
+              <View style={styles.successButtonsRow}>
+                <TouchableOpacity
+                  onPress={handleDownload}
+                  style={[
+                    styles.reDownloadBtn,
+                    { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+                  ]}
+                >
+                  <Download size={14} color={colors.text} style={{ marginRight: 5 }} />
+                  <Text style={[styles.reDownloadBtnText, { color: colors.text }]}>
+                    {language === 'am' ? 'እንደገና አውርድ' : 'Save Again'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleShareDownloaded}
+                  style={[styles.shareBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Share2 size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.shareBtnText}>
+                    {language === 'am' ? 'አጋራ / ክፈት' : 'Share File'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -365,7 +565,9 @@ export const VideoDownloaderScreen: React.FC = () => {
             {t.video_notice_title}
           </Text>
           <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-            {t.video_notice_desc}
+            {language === 'am'
+              ? 'YouTube እና TikTok ቪዲዮዎችን ከዋተርማርክ ነጻ ሆነው ወይም በድምጽ (MP3) ጥራት በቀጥታ ማውረድ ይችላሉ።'
+              : 'Direct audio/video streaming extracts high-resolution files. TikTok videos are extracted without watermarks.'}
           </Text>
         </View>
       </View>
@@ -405,29 +607,29 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginBottom: 6,
   },
   input: {
+    height: 44,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   analyzeBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    height: 44,
+    borderRadius: 12,
     marginBottom: 14,
   },
   analyzeBtnText: {
@@ -436,21 +638,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sampleSection: {
-    marginTop: 6,
+    marginTop: 4,
   },
   sampleTitle: {
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 6,
   },
-  sampleItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 4,
+  samplePillsRow: {
+    gap: 6,
   },
-  sampleItemText: {
+  samplePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  samplePillText: {
     fontSize: 11,
+    fontWeight: '600',
   },
   videoCard: {
     borderRadius: 20,
@@ -459,44 +666,83 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   thumbnailContainer: {
-    position: 'relative',
-    borderRadius: 12,
+    width: '100%',
+    height: 190,
+    borderRadius: 14,
     overflow: 'hidden',
+    position: 'relative',
     marginBottom: 12,
   },
   thumbnail: {
     width: '100%',
-    height: 180,
-    borderRadius: 12,
-    backgroundColor: '#000',
+    height: '100%',
   },
   durationBadge: {
     position: 'absolute',
     bottom: 8,
     right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 4,
   },
   durationText: {
     color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  watermarkFreeBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: '#10b981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  watermarkFreeBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   videoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     marginBottom: 4,
   },
   videoAuthor: {
-    fontSize: 12,
+    fontSize: 11,
+    marginBottom: 14,
+  },
+  filterTabsRow: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: 12,
     marginBottom: 12,
   },
+  filterTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 9,
+    gap: 5,
+  },
+  filterTabText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
   qualityLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginBottom: 8,
+  },
+  qualitiesList: {
+    gap: 8,
+    marginBottom: 14,
   },
   qualityOption: {
     flexDirection: 'row',
@@ -504,27 +750,56 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 8,
+    borderWidth: 1.5,
   },
   qualityInfo: {
     flex: 1,
   },
   qualityName: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  cleanBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  cleanBadgeText: {
+    color: '#10b981',
+    fontSize: 9,
+    fontWeight: '700',
   },
   qualityMeta: {
+    fontSize: 10,
+  },
+  emptyFilterText: {
     fontSize: 11,
-    marginTop: 2,
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  filenameSection: {
+    marginBottom: 12,
+  },
+  filenameInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  filenameInput: {
+    flex: 1,
+    height: 40,
   },
   downloadBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    height: 44,
+    borderRadius: 12,
   },
   downloadBtnText: {
     color: '#fff',
@@ -532,7 +807,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   downloadingBox: {
-    marginTop: 12,
+    paddingVertical: 6,
   },
   progressBarBg: {
     height: 6,
@@ -546,20 +821,19 @@ const styles = StyleSheet.create({
   },
   downloadingTextRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   downloadingText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   cancelText: {
-    color: '#dc2626',
-    fontSize: 12,
-    fontWeight: '600',
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '700',
   },
   successBox: {
-    marginTop: 12,
     padding: 12,
     borderRadius: 12,
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -567,41 +841,57 @@ const styles = StyleSheet.create({
   successRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 4,
   },
   successText: {
     color: '#10b981',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   savedPathText: {
     fontSize: 11,
-    marginTop: 4,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  shareBtn: {
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  successButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reDownloadBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  reDownloadBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  shareBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    borderRadius: 10,
   },
   shareBtnText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   infoCard: {
     flexDirection: 'row',
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 14,
   },
   infoTitle: {
     fontSize: 12,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   infoText: {
     fontSize: 11,

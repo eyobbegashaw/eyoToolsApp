@@ -429,7 +429,7 @@ export const FileConverterScreen: React.FC = () => {
       >
         <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
         <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          100% On-Device Document Engine. No cloud uploads. Your private documents, assignments, and slides remain securely on your device.
+          100% On-Device Document Engine. No cloud uploads. Your private documents, assignments, and slides remain securely on your device and pls again check the file after conversion.
         </Text>
       </View>
     </ScrollView>

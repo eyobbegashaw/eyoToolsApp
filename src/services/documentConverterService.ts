@@ -202,10 +202,14 @@ async function renderOfficePdf(
       }
       await frame.contentDocument?.fonts?.ready;
       const images = Array.from(body.querySelectorAll('img'));
-      await Promise.all(images.map((image) => image.decode()));
-      if (images.some((image) => image.naturalWidth === 0 || image.naturalHeight === 0)) {
-        throw new Error('The document contains an image that could not be rendered.');
-      }
+      // Decode images individually; skip (warn) on failures to avoid aborting the whole render
+      await Promise.all(
+        images.map((image) =>
+          image.decode().catch(() => {
+            console.warn('[renderOfficePdf] Failed to decode image:', image.src?.slice(0, 80));
+          })
+        )
+      );
 
       const worker = html2pdf()
         .set({
@@ -217,7 +221,7 @@ async function renderOfficePdf(
                 pageSize.margins.left,
               ]
             : 0,
-          image: { type: 'jpeg', quality: 0.96 },
+          image: { type: 'jpeg', quality: 0.98 },
           enableLinks: true,
           html2canvas: {
             scale: 2,

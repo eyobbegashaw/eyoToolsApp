@@ -32,6 +32,7 @@ import { MarkdownService, MarkdownStats, MarkdownTemplate } from '../services/ma
 import { DocumentConverterService } from '../services/documentConverterService';
 import { StorageService } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
+import { MarkdownView } from '../components/MarkdownView';
 
 type ViewMode = 'edit' | 'preview' | 'split';
 
@@ -297,24 +298,27 @@ export const MarkdownEditorScreen: React.FC = () => {
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
           ]}
         >
-          <Text style={[styles.previewHeading, { color: colors.textMuted }]}>
-            Live Document Preview
-          </Text>
+          <View style={styles.previewHeaderRow}>
+            <Text style={[styles.previewHeading, { color: colors.textSecondary }]}>
+              {viewMode === 'split' ? 'Live Split Preview' : 'Document Preview'}
+            </Text>
+            <View style={[styles.liveBadge, { backgroundColor: 'rgba(139, 92, 246, 0.15)' }]}>
+              <View style={[styles.liveDot, { backgroundColor: '#8b5cf6' }]} />
+              <Text style={[styles.liveBadgeText, { color: '#8b5cf6' }]}>LIVE</Text>
+            </View>
+          </View>
           <ScrollView
             style={[
               styles.previewScrollView,
-              { height: viewMode === 'split' ? 140 : 240 },
+              {
+                maxHeight: viewMode === 'split' ? 240 : undefined,
+                minHeight: viewMode === 'split' ? 160 : 360,
+              },
             ]}
             nestedScrollEnabled
+            showsVerticalScrollIndicator={true}
           >
-            <Text
-              style={[
-                styles.previewBody,
-                { color: colors.text, fontSize: 12 * fontScale },
-              ]}
-            >
-              {markdownText}
-            </Text>
+            <MarkdownView content={markdownText} />
           </ScrollView>
         </View>
       )}
@@ -515,6 +519,30 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textAlignVertical: 'top',
     lineHeight: 18,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  liveBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   previewHeading: {
     fontSize: 11,

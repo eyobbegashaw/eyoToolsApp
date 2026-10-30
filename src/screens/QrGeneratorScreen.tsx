@@ -7,62 +7,122 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import {
   QrCode,
   Share2,
   Sparkles,
-  Palette,
-  Check,
+  Download,
+  FileText,
+  CheckCircle2,
+  Copy,
 } from 'lucide-react-native';
+import { QrService } from '../services/qrService';
 import { StorageService } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 
 export const QrGeneratorScreen: React.FC = () => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, t, language, fontScale } = useTheme();
   const qrRef = useRef<any>(null);
 
   const [qrValue, setQrValue] = useState<string>('https://github.com/eyobbegashaw');
   const [errorLevel, setErrorLevel] = useState<'L' | 'M' | 'Q' | 'H'>('M');
   const [fgColor, setFgColor] = useState<string>('#000000');
   const [bgColor, setBgColor] = useState<string>('#ffffff');
-  const [copied, setCopied] = useState<boolean>(false);
+  const [outputFileName, setOutputFileName] = useState<string>('eyoTools_qr.png');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
 
-  const handleShareQr = () => {
-    if (!qrRef.current) return;
+  /**
+   * Save / Download the QR code as PNG image
+   */
+  const handleSaveQr = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
 
-    qrRef.current.toDataURL(async (data: string) => {
-      try {
-        const fileUri = `${FileSystem.cacheDirectory}eyoTools_qr_${Date.now()}.png`;
-        await FileSystem.writeAsStringAsync(fileUri, data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+    try {
+      // Generate clean high-resolution (512x512) PNG data URL
+      const dataUrl = await QrService.generateQrDataUrl(qrValue, {
+        fgColor,
+        bgColor,
+        errorLevel,
+        size: 512,
+      });
 
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri, {
-            mimeType: 'image/png',
-            dialogTitle: 'Share QR Code',
-          });
-        }
+      await QrService.saveQrImage(dataUrl, outputFileName);
 
-        StorageService.addHistoryItem({
-          toolId: 'qr',
-          title: `QR: ${qrValue.slice(0, 30)}...`,
-          snippet: qrValue,
-          fileSize: '12 KB',
-          fileType: 'QR',
-        });
-      } catch (e: any) {
-        Alert.alert(t.error, e.message || 'Failed to share QR image');
-      }
-    });
+      await StorageService.addHistoryItem({
+        toolId: 'qr',
+        title: outputFileName,
+        snippet: qrValue,
+        fileSize: '512x512 PNG',
+        fileType: 'QR',
+      });
+
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'QR Code Saved',
+        language === 'am'
+          ? `የተዘጋጀው QR ኮድ "${outputFileName}" በተሳካ ሁኔታ ተቀምጧል`
+          : `High-resolution QR code "${outputFileName}" saved successfully!`
+      );
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to save QR image');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleLoadSample = (sample: string) => {
+  /**
+   * Share the QR code across Web & Mobile platforms
+   */
+  const handleShareQr = async () => {
+    if (isSharing) return;
+    setIsSharing(true);
+
+    try {
+      const dataUrl = await QrService.generateQrDataUrl(qrValue, {
+        fgColor,
+        bgColor,
+        errorLevel,
+        size: 512,
+      });
+
+      const res = await QrService.shareQr(dataUrl, outputFileName, qrValue);
+
+      await StorageService.addHistoryItem({
+        toolId: 'qr',
+        title: outputFileName,
+        snippet: qrValue,
+        fileSize: '512x512 PNG',
+        fileType: 'QR',
+      });
+
+      if (res.method === 'clipboard_download') {
+        Alert.alert(
+          language === 'am' ? 'ተጋርቷል' : 'Ready to Share',
+          language === 'am'
+            ? 'የ QR ኮዱ ይዘት ወደ ቅንጥብ ሰሌዳ ተቀድቷል እና ምስሉ ወርዷል'
+            : 'QR code link copied to clipboard & image downloaded for sharing!'
+        );
+      } else if (res.shared && res.method !== 'cancelled') {
+        Alert.alert(
+          language === 'am' ? 'ተጠናቋል' : 'Success',
+          language === 'am' ? 'QR ኮዱ በተሳካ ሁኔታ ተጋርቷል' : 'QR code shared successfully!'
+        );
+      }
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to share QR image');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleLoadSample = (sample: string, defaultName: string) => {
     setQrValue(sample);
+    setOutputFileName(defaultName);
   };
 
   return (
@@ -90,7 +150,7 @@ export const QrGeneratorScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Input */}
+        {/* Text / URL Input */}
         <Text style={[styles.label, { color: colors.textMuted }]}>
           {t.enter_text_or_url}
         </Text>
@@ -112,7 +172,9 @@ export const QrGeneratorScreen: React.FC = () => {
         {/* Quick Sample Buttons */}
         <View style={styles.samplesRow}>
           <TouchableOpacity
-            onPress={() => handleLoadSample('https://github.com/eyobbegashaw')}
+            onPress={() =>
+              handleLoadSample('https://github.com/eyobbegashaw', 'github_profile_qr.png')
+            }
             style={[styles.samplePill, { backgroundColor: colors.cardSecondary }]}
           >
             <Sparkles size={11} color="#d97706" style={{ marginRight: 4 }} />
@@ -122,7 +184,12 @@ export const QrGeneratorScreen: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => handleLoadSample('WIFI:S:eyoTools_Guest;T:WPA;P:Ethiopia2026;;')}
+            onPress={() =>
+              handleLoadSample(
+                'WIFI:S:eyoTools_Guest;T:WPA;P:Ethiopia2026;;',
+                'wifi_guest_qr.png'
+              )
+            }
             style={[styles.samplePill, { backgroundColor: colors.cardSecondary }]}
           >
             <Sparkles size={11} color="#d97706" style={{ marginRight: 4 }} />
@@ -132,7 +199,12 @@ export const QrGeneratorScreen: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => handleLoadSample('mailto:eyobbegashaw21@gmail.com')}
+            onPress={() =>
+              handleLoadSample(
+                'mailto:eyobbegashaw21@gmail.com',
+                'contact_email_qr.png'
+              )
+            }
             style={[styles.samplePill, { backgroundColor: colors.cardSecondary }]}
           >
             <Sparkles size={11} color="#d97706" style={{ marginRight: 4 }} />
@@ -143,7 +215,7 @@ export const QrGeneratorScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* QR Matrix Preview */}
+      {/* QR Matrix Preview & Controls */}
       <View
         style={[
           styles.previewCard,
@@ -160,7 +232,7 @@ export const QrGeneratorScreen: React.FC = () => {
             size={180}
             color={fgColor}
             backgroundColor={bgColor}
-            getRef={(c) => (qrRef.current = c)}
+            getRef={(c: any) => (qrRef.current = c)}
             ecl={errorLevel}
           />
         </View>
@@ -198,14 +270,104 @@ export const QrGeneratorScreen: React.FC = () => {
           })}
         </View>
 
-        {/* Share Button */}
-        <TouchableOpacity
-          onPress={handleShareQr}
-          style={[styles.shareBtn, { backgroundColor: colors.primary }]}
-        >
-          <Share2 size={16} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={styles.shareBtnText}>Share & Save QR Image</Text>
-        </TouchableOpacity>
+        {/* Error Correction Level Chips */}
+        <View style={styles.errorLevelRow}>
+          <Text style={[styles.eclLabel, { color: colors.textMuted }]}>
+            {language === 'am' ? 'የስህተት ማረሚያ (ECL):' : 'Error Correction:'}
+          </Text>
+          {(['L', 'M', 'Q', 'H'] as const).map((lvl) => (
+            <TouchableOpacity
+              key={lvl}
+              onPress={() => setErrorLevel(lvl)}
+              style={[
+                styles.eclChip,
+                {
+                  backgroundColor:
+                    errorLevel === lvl ? colors.primary : colors.cardSecondary,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.eclChipText,
+                  { color: errorLevel === lvl ? '#fff' : colors.textSecondary },
+                ]}
+              >
+                {lvl}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Editable Output File Name */}
+        <View style={styles.exportSection}>
+          <Text style={[styles.label, { color: colors.textMuted, marginBottom: 5 }]}>
+            {language === 'am' ? 'የፋይል ስም (.png):' : 'Output File Name (.png):'}
+          </Text>
+          <View
+            style={[
+              styles.filenameInputWrap,
+              { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+            ]}
+          >
+            <FileText size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              value={outputFileName}
+              onChangeText={setOutputFileName}
+              placeholder="eyoTools_qr.png"
+              placeholderTextColor={colors.textMuted}
+              style={[
+                styles.filenameInput,
+                { color: colors.text, fontSize: 12 * fontScale },
+              ]}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          {/* Action Buttons: Save & Share */}
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity
+              onPress={handleSaveQr}
+              disabled={isSaving || isSharing}
+              style={[
+                styles.saveBtn,
+                { backgroundColor: '#10b981', opacity: isSaving ? 0.7 : 1 },
+              ]}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Download size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.actionBtnText}>
+                    {language === 'am' ? 'QR አስቀምጥ' : 'Save QR Image'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleShareQr}
+              disabled={isSaving || isSharing}
+              style={[
+                styles.shareBtn,
+                { backgroundColor: colors.primary, opacity: isSharing ? 0.7 : 1 },
+              ]}
+            >
+              {isSharing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Share2 size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.actionBtnText}>
+                    {language === 'am' ? 'አጋራ' : 'Share QR'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
@@ -297,7 +459,7 @@ const styles = StyleSheet.create({
   colorPresetsRow: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 18,
+    marginBottom: 14,
     flexWrap: 'wrap',
     justifyContent: 'center',
   },
@@ -319,17 +481,67 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  shareBtn: {
+  errorLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  eclLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  eclChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  eclChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  exportSection: {
+    width: '100%',
+    marginTop: 4,
+  },
+  filenameInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    marginBottom: 12,
+  },
+  filenameInput: {
+    flex: 1,
+    height: 40,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  saveBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
     height: 44,
     borderRadius: 12,
   },
-  shareBtnText: {
+  shareBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: 12,
+  },
+  actionBtnText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
 });

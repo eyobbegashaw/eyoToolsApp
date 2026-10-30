@@ -195,3 +195,7 @@ declare module 'react-native-qrcode-svg' {
   const QRCode: any;
   export default QRCode;
 }
+
+declare module 'qrcode';
+
+declare module 'jsqr';

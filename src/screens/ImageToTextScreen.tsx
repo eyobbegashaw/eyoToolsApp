@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -21,6 +22,7 @@ import {
   AlertCircle,
   Sparkles,
   Info,
+  FileText,
 } from 'lucide-react-native';
 import { OCRService } from '../services/ocrService';
 import { PDFService } from '../services/pdfService';
@@ -28,7 +30,7 @@ import { StorageService } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 
 export const ImageToTextScreen: React.FC = () => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, t, language, fontScale } = useTheme();
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [ocrLang, setOcrLang] = useState<'eng' | 'amh'>('eng');
@@ -38,6 +40,8 @@ export const ImageToTextScreen: React.FC = () => {
   const [extractedText, setExtractedText] = useState<string>('');
   const [confidence, setConfidence] = useState<number | null>(null);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const [ocrEngine, setOcrEngine] = useState<string>('');
+  const [exportFileName, setExportFileName] = useState<string>('ocr_extracted_text.txt');
 
   const handlePickGallery = async () => {
     try {
@@ -53,9 +57,18 @@ export const ImageToTextScreen: React.FC = () => {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setImageUri(asset.uri);
         setExtractedText('');
         setConfidence(null);
+        setOcrEngine('');
+        const assetName = (asset as any).fileName || (asset.uri ? asset.uri.split('/').pop()?.split('?')[0] : '');
+        if (assetName && !assetName.startsWith('data:')) {
+          const baseName = assetName.replace(/\.[^/.]+$/, '');
+          setExportFileName(`${baseName}_ocr.txt`);
+        } else {
+          setExportFileName(`ocr_${ocrLang}_document.txt`);
+        }
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to select image from gallery');
@@ -78,6 +91,8 @@ export const ImageToTextScreen: React.FC = () => {
         setImageUri(result.assets[0].uri);
         setExtractedText('');
         setConfidence(null);
+        setOcrEngine('');
+        setExportFileName(`camera_scan_${ocrLang}.txt`);
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to launch camera');
@@ -94,6 +109,8 @@ export const ImageToTextScreen: React.FC = () => {
     setImageUri(sampleUri);
     setExtractedText('');
     setConfidence(null);
+    setOcrEngine('');
+    setExportFileName(ocrLang === 'amh' ? 'amharic_sample_ocr.txt' : 'textbook_sample_ocr.txt');
   };
 
   const handleRunOcr = async () => {
@@ -101,7 +118,7 @@ export const ImageToTextScreen: React.FC = () => {
 
     setIsProcessing(true);
     setProgress(10);
-    setStatusMessage('Reading image bytes...');
+    setStatusMessage('Optimizing image for OCR...');
 
     try {
       const result = await OCRService.recognizeImage(imageUri, ocrLang, (p, status) => {
@@ -111,6 +128,9 @@ export const ImageToTextScreen: React.FC = () => {
 
       setExtractedText(result.text);
       setConfidence(result.confidence);
+      if (result.engine) {
+        setOcrEngine(result.engine);
+      }
 
       await StorageService.addHistoryItem({
         toolId: 'ocr',
@@ -135,8 +155,39 @@ export const ImageToTextScreen: React.FC = () => {
   };
 
   const handleExportTxt = async () => {
-    if (!extractedText) return;
-    await PDFService.exportTextFile(extractedText, 'eyoTools_ocr_extracted.txt');
+    if (!extractedText.trim()) {
+      Alert.alert(t.error, 'No text available to export.');
+      return;
+    }
+
+    let cleanFilename = exportFileName.trim().replace(/[\\/:*?"<>|]/g, '_');
+    if (!cleanFilename) {
+      cleanFilename = `ocr_${ocrLang}_document.txt`;
+    }
+    if (!cleanFilename.toLowerCase().endsWith('.txt')) {
+      cleanFilename += '.txt';
+    }
+
+    try {
+      await PDFService.exportTextFile(extractedText, cleanFilename);
+
+      await StorageService.addHistoryItem({
+        toolId: 'ocr',
+        title: cleanFilename,
+        snippet: extractedText.slice(0, 80) + '...',
+        fileSize: `${extractedText.length} chars`,
+        fileType: 'TXT',
+      });
+
+      Alert.alert(
+        language === 'am' ? 'ተጠናቋል' : 'Success',
+        language === 'am'
+          ? `ፋይል "${cleanFilename}" በተሳካ ሁኔታ ተልኳል / ወርዷል`
+          : `File "${cleanFilename}" exported successfully!`
+      );
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to export file');
+    }
   };
 
   return (
@@ -257,13 +308,12 @@ export const ImageToTextScreen: React.FC = () => {
           {!extractedText && (
             <TouchableOpacity
               onPress={handleRunOcr}
-              accessibilityState={{ disabled: isProcessing }}
+              disabled={isProcessing}
               style={[
                 styles.recognizeBtn,
                 {
                   backgroundColor: colors.primary,
                   opacity: isProcessing ? 0.7 : 1,
-                  pointerEvents: isProcessing ? 'none' : 'auto',
                 },
               ]}
             >
@@ -296,9 +346,29 @@ export const ImageToTextScreen: React.FC = () => {
           ]}
         >
           <View style={styles.resultHeader}>
-            <Text style={[styles.resultTitle, { color: colors.text }]}>
-              {t.extracted_text}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.resultTitle, { color: colors.text }]}>
+                  {t.extracted_text}
+                </Text>
+                <View
+                  style={[
+                    styles.editableBadge,
+                    { backgroundColor: 'rgba(59, 130, 246, 0.12)' },
+                  ]}
+                >
+                  <FileText size={11} color="#3b82f6" style={{ marginRight: 4 }} />
+                  <Text style={[styles.editableBadgeText, { color: '#3b82f6' }]}>
+                    {language === 'am' ? 'ማረም ይቻላል' : 'Editable'}
+                  </Text>
+                </View>
+              </View>
+              {ocrEngine ? (
+                <Text style={{ fontSize: 10, color: '#10b981', fontWeight: '600', marginTop: 2 }}>
+                  ✓ {ocrEngine}
+                </Text>
+              ) : null}
+            </View>
             {confidence && (
               <View style={styles.confidenceBadge}>
                 <Text style={styles.confidenceText}>
@@ -308,16 +378,61 @@ export const ImageToTextScreen: React.FC = () => {
             )}
           </View>
 
-          <ScrollView style={styles.resultScrollView} nestedScrollEnabled>
-            <Text
+          {/* Editable Extracted Text Area */}
+          <TextInput
+            multiline
+            value={extractedText}
+            onChangeText={setExtractedText}
+            placeholder="Extracted text will appear here..."
+            placeholderTextColor={colors.textMuted}
+            style={[
+              styles.resultTextInput,
+              {
+                color: colors.text,
+                fontSize: 13 * fontScale,
+                backgroundColor: colors.cardSecondary,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+            textAlignVertical="top"
+          />
+
+          <View style={styles.charCountRow}>
+            <Text style={[styles.charCountText, { color: colors.textMuted }]}>
+              {extractedText.length} {language === 'am' ? 'ፊደላት' : 'characters'} •{' '}
+              {extractedText.split('\n').filter(Boolean).length} {language === 'am' ? 'መስመሮች' : 'lines'}
+            </Text>
+          </View>
+
+          {/* Output File Name Field */}
+          <View style={styles.filenameSection}>
+            <Text style={[styles.filenameLabel, { color: colors.textMuted }]}>
+              {language === 'am' ? 'የፋይል ስም (.txt)' : 'Output File Name (.txt)'}
+            </Text>
+            <View
               style={[
-                styles.resultBody,
-                { color: colors.text, fontSize: 13 * fontScale },
+                styles.filenameInputWrap,
+                {
+                  backgroundColor: colors.cardSecondary,
+                  borderColor: colors.cardBorder,
+                },
               ]}
             >
-              {extractedText}
-            </Text>
-          </ScrollView>
+              <FileText size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
+              <TextInput
+                value={exportFileName}
+                onChangeText={setExportFileName}
+                placeholder="ocr_extracted_text.txt"
+                placeholderTextColor={colors.textMuted}
+                style={[
+                  styles.filenameInput,
+                  { color: colors.text, fontSize: 12 * fontScale },
+                ]}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
 
           <View style={styles.resultActions}>
             <TouchableOpacity
@@ -514,6 +629,57 @@ const styles = StyleSheet.create({
     color: '#10b981',
     fontSize: 10,
     fontWeight: '700',
+  },
+  editableBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  editableBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  resultTextInput: {
+    minHeight: 120,
+    maxHeight: 220,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    lineHeight: 20,
+    textAlignVertical: 'top',
+  },
+  charCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  charCountText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  filenameSection: {
+    marginBottom: 14,
+  },
+  filenameLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  filenameInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  filenameInput: {
+    flex: 1,
+    height: 40,
   },
   resultScrollView: {
     maxHeight: 180,
