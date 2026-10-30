@@ -7,7 +7,7 @@
 
 > Developed by **Dn Eyob Begashaw** • Addis Ababa, Ethiopia  
 > *For Computer Science Students, By a Computer Science Student*
-
+https://expo.dev/accounts/engda/projects/eyotools-mobile/builds/fd92f3a1-b7b0-4d9a-8b4a-e1ae9446c921
 eyoTools Mobile is a complete, standalone native Android application converted from the eyoTools desktop utility suite. It features full bilingual support (**English & Amharic አማርኛ**), adaptive dark/light themes, offline-first execution, and a modular architecture matching the Google AI Studio Web Preview.
 
 ---
