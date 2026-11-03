@@ -8,7 +8,7 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
-  const { t, language } = useTheme();
+  const { language, fonts } = useTheme();
   const [isFinishing, setIsFinishing] = useState(false);
   const isFinishingRef = useRef(false);
 
@@ -36,11 +36,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     >
       <View style={styles.centerBox}>
         <View style={styles.logoBadge}>
-          <Text style={styles.logoText}>CS</Text>
+          <Text style={[styles.logoText, { fontFamily: fonts.bold }]}>CS</Text>
         </View>
 
-        <Text style={styles.title}>eyoTools</Text>
-        <Text style={styles.tagline}>
+        <Text style={[styles.title, { fontFamily: fonts.bold }]}>eyoTools</Text>
+        <Text style={[styles.tagline, { fontFamily: fonts.regular }]}>
           {language === 'am'
             ? 'ከ 8 በላይ ተወዳጅ የሆኑ መሳሪዎች ያሉት'
             : 'A collection of 8+ popular tools'}
@@ -48,8 +48,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
         <View style={styles.divider} />
 
-        <Text style={styles.developer}>Dn Eyob Begashaw</Text>
-        <Text style={styles.location}>Addis Ababa, Ethiopia</Text>
+        <Text style={[styles.developer, { fontFamily: fonts.bold }]}>Dn Eyob Begashaw</Text>
+        <Text style={[styles.location, { fontFamily: fonts.regular }]}>Addis Ababa, Ethiopia</Text>
       </View>
 
       <View style={styles.footer}>
@@ -62,11 +62,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
             styles.skipBtn,
             {
               opacity: isFinishing ? 0.5 : 1,
-              pointerEvents: isFinishing ? 'none' : 'auto',
             },
           ]}
         >
-          <Text style={styles.skipText}>
+          <Text style={[styles.skipText, { fontFamily: fonts.medium }]}>
             {language === 'am' ? 'ጀምር' : 'Tap to Enter'}
           </Text>
         </TouchableOpacity>
@@ -97,7 +96,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
     elevation: 8,
-    boxShadow: '0px 4px 10px rgba(56, 189, 248, 0.4)',
   },
   logoText: {
     color: '#ffffff',

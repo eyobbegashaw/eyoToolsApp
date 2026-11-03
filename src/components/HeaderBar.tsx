@@ -11,7 +11,7 @@ interface HeaderBarProps {
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({ currentScreen, onBack, title }) => {
-  const { colors, isDark, language, setThemeMode, setLanguage, fontScale } = useTheme();
+  const { colors, fonts, isDark, language, setThemeMode, setLanguage, fontScale } = useTheme();
 
   const isMainTab = ['home', 'tools', 'history', 'settings'].includes(currentScreen);
 
@@ -56,13 +56,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ currentScreen, onBack, tit
               styles.title,
               {
                 color: colors.text,
-                fontSize: 16 * fontScale,
+                fontSize: 15 * fontScale,
+                fontFamily: fonts.bold,
               },
             ]}
           >
             {title || (language === 'am' ? 'ኢዮ መሳሪያዎች' : 'eyoTools')}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+          <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: fonts.regular }]}>
             {language === 'am' ? 'ለተማሪዎች' : 'For Student Edition'}
           </Text>
         </View>
@@ -100,7 +101,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ currentScreen, onBack, tit
 
 const styles = StyleSheet.create({
   container: {
-    height: 56,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

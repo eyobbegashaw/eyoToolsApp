@@ -336,10 +336,14 @@ export class DocumentConverterService {
    */
   static async convertDocxToPdf(
     uri: string,
-    sourceFileName = 'document.docx'
+    sourceFileName = 'document.docx',
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<ConversionResult> {
+    onProgress?.(15, 'Reading document package (.docx)...');
     const entries = await readZipEntries(uri);
+    onProgress?.(40, 'Extracting styles, tables & formatting...');
     const rendered = renderDocxHtml(entries);
+    onProgress?.(65, 'Rendering document layout to PDF...');
     const documentXml = entries['word/document.xml'];
     const extracted = documentXml
       ? extractXmlParagraphs(strFromU8(documentXml), 'w:p', 'w:t').join('\n')
@@ -351,6 +355,7 @@ export class DocumentConverterService {
       outputFileName,
       rendered
     );
+    onProgress?.(100, 'Conversion complete!');
 
     return {
       outputUri: output.uri,
@@ -366,9 +371,12 @@ export class DocumentConverterService {
    */
   static async convertPdfToDocx(
     uri: string,
-    sourceFileName = 'document.pdf'
+    sourceFileName = 'document.pdf',
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<ConversionResult> {
+    onProgress?.(20, 'Reading PDF document pages...');
     const pages = await rasterizePdf(uri);
+    onProgress?.(55, 'Rasterizing page graphics & layout...');
     if (!pages.length) {
       throw new Error('The selected PDF does not contain any pages.');
     }
@@ -452,9 +460,12 @@ export class DocumentConverterService {
    */
   static async convertPptxToPdf(
     uri: string,
-    sourceFileName = 'presentation.pptx'
+    sourceFileName = 'presentation.pptx',
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<ConversionResult> {
+    onProgress?.(20, 'Reading presentation slides (.pptx)...');
     const entries = await readZipEntries(uri);
+    onProgress?.(50, 'Extracting slide graphics & shapes...');
     const slideFiles = Object.keys(entries)
       .map((name) => ({ name, match: name.match(/^ppt\/slides\/slide(\d+)\.xml$/) }))
       .filter((entry): entry is { name: string; match: RegExpMatchArray } => !!entry.match)
@@ -469,11 +480,13 @@ export class DocumentConverterService {
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}_slides.pdf`;
     const rendered = renderPptxHtml(entries);
+    onProgress?.(75, 'Rendering presentation slides to PDF...');
     const output = await renderOfficePdf(
       rendered.html,
       outputFileName,
       rendered
     );
+    onProgress?.(100, 'Conversion complete!');
 
     return {
       outputUri: output.uri,
@@ -489,17 +502,21 @@ export class DocumentConverterService {
    */
   static async convertMdToPdf(
     markdown: string,
-    sourceFileName = 'notes.md'
+    sourceFileName = 'notes.md',
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<ConversionResult> {
+    onProgress?.(30, 'Parsing Markdown formatting & typography...');
     const baseName = sourceFileName.replace(/\.[^/.]+$/, '');
     const outputFileName = `${baseName}.pdf`;
     const html = await renderMarkdownHtml(markdown);
+    onProgress?.(65, 'Synthesizing PDF layout...');
     const output = await renderOfficePdf(
       html,
       outputFileName,
       { width: 612, height: 792, margins: { top: 54, right: 54, bottom: 54, left: 54 } }
     );
 
+    onProgress?.(100, 'Conversion complete!');
     return {
       outputUri: output.uri,
       outputFileName,
@@ -511,10 +528,12 @@ export class DocumentConverterService {
 
   static async convertMdFileToPdf(
     uri: string,
-    sourceFileName = 'notes.md'
+    sourceFileName = 'notes.md',
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<ConversionResult> {
+    onProgress?.(15, 'Reading Markdown file...');
     const markdown = await readFileText(uri);
-    return this.convertMdToPdf(markdown, sourceFileName);
+    return this.convertMdToPdf(markdown, sourceFileName, onProgress);
   }
 
   /**

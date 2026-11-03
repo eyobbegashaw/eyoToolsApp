@@ -15,7 +15,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   onNavigate,
   historyCount = 0,
 }) => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, t, fontScale, fonts } = useTheme();
 
   const tabs: { id: ScreenId; label: string; icon: React.ComponentType<{ size: number; color: string }> }[] = [
     { id: 'home', label: t.home, icon: Home },
@@ -50,7 +50,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               <IconComponent size={20} color={iconColor} />
               {tab.id === 'history' && historyCount > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.cyan }]}>
-                  <Text style={styles.badgeText}>
+                  <Text style={[styles.badgeText, { fontFamily: fonts.bold }]}>
                     {historyCount > 99 ? '99+' : historyCount}
                   </Text>
                 </View>
@@ -61,7 +61,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 styles.tabLabel,
                 {
                   color: isActive ? colors.cyan : colors.textMuted,
-                  fontWeight: isActive ? '700' : '500',
+                  fontFamily: isActive ? fonts.bold : fonts.medium,
                   fontSize: 10 * fontScale,
                 },
               ]}
@@ -77,19 +77,19 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    height: Platform.OS === 'ios' ? 70 : 60,
+    height: Platform.OS === 'ios' ? 66 : 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 14 : 4,
-    paddingTop: 4,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 3,
+    paddingTop: 3,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   iconContainer: {
     position: 'relative',
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabLabel: {
-    marginTop: 3,
+    marginTop: 2,
   },
   badge: {
     position: 'absolute',

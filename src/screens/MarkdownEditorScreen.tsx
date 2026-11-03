@@ -428,7 +428,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {

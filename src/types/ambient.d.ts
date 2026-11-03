@@ -68,6 +68,11 @@ declare module 'expo-file-system' {
   export function writeAsStringAsync(fileUri: string, contents: string, options?: any): Promise<void>;
   export function getInfoAsync(fileUri: string, options?: any): Promise<{ exists: boolean; size: number; isDirectory: boolean }>;
   export function deleteAsync(fileUri: string, options?: any): Promise<void>;
+  export function downloadAsync(
+    url: string,
+    fileUri: string,
+    options?: any
+  ): Promise<{ uri: string; status: number }>;
   export function createDownloadResumable(
     url: string,
     fileUri: string,

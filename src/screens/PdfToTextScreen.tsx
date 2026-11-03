@@ -42,6 +42,9 @@ export const PdfToTextScreen: React.FC<PdfToTextScreenProps> = ({ onNavigate }) 
   const [extractionResult, setExtractionResult] = useState<PDFExtractionResult | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const [ocrLang, setOcrLang] = useState<'eng' | 'amh'>('eng');
+  const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
+  const [ocrStatus, setOcrStatus] = useState<string>('');
   const visibleText =
     extractionResult && searchQuery.trim()
       ? extractionResult.text
@@ -138,6 +141,35 @@ Linear collections provide sequential traversal:
       Alert.alert(t.error, e.message || 'Failed to extract text from PDF');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleRunOcrOnPdf = async () => {
+    if (!fileUri || isOcrProcessing) return;
+
+    try {
+      setIsOcrProcessing(true);
+      setOcrStatus(ocrLang === 'amh' ? 'የገጾች ምስል በማዘጋጀት ላይ...' : 'Preparing scanned pages...');
+      setProgress(10);
+
+      const result = await PDFService.extractTextWithOCR(fileUri, ocrLang, (p, status) => {
+        setProgress(p);
+        setOcrStatus(status);
+      });
+
+      setExtractionResult(result);
+
+      await StorageService.addHistoryItem({
+        toolId: 'pdf_extract',
+        title: `${selectedFileName} (OCR)`,
+        snippet: result.text.substring(0, 100) + '...',
+        fileSize: selectedFileSize,
+        fileType: 'PDF',
+      });
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to extract text using OCR');
+    } finally {
+      setIsOcrProcessing(false);
     }
   };
 
@@ -324,18 +356,82 @@ Linear collections provide sequential traversal:
                 </Text>
               </View>
               <Text style={[styles.scannedDescription, { color: colors.textSecondary }]}>
-                {t.scanned_pdf_warning}
+                {t.ocr_scanned_notice || t.scanned_pdf_warning}
               </Text>
-              <Text style={[styles.scannedInfoTip, { color: colors.textMuted }]}>
-                Standard text extraction only works for digital PDFs with embedded font layers. For scanned physical papers, books, or image PDFs, use optical character recognition.
-              </Text>
+
+              {/* Language Selection for OCR */}
+              <View style={styles.ocrLangSection}>
+                <Text style={[styles.ocrLangLabel, { color: colors.textSecondary }]}>
+                  {t.ocr_language_label}:
+                </Text>
+                <View style={styles.ocrLangButtonGroup}>
+                  <TouchableOpacity
+                    onPress={() => setOcrLang('eng')}
+                    style={[
+                      styles.ocrLangBtn,
+                      { borderColor: colors.cardBorder },
+                      ocrLang === 'eng' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.ocrLangBtnText,
+                        { color: ocrLang === 'eng' ? '#fff' : colors.text },
+                      ]}
+                    >
+                      🇬🇧 English
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setOcrLang('amh')}
+                    style={[
+                      styles.ocrLangBtn,
+                      { borderColor: colors.cardBorder },
+                      ocrLang === 'amh' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.ocrLangBtnText,
+                        { color: ocrLang === 'amh' ? '#fff' : colors.text },
+                      ]}
+                    >
+                      🇪🇹 አማርኛ (Amharic)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Direct OCR Button */}
+              <TouchableOpacity
+                onPress={handleRunOcrOnPdf}
+                accessibilityState={{ disabled: isOcrProcessing }}
+                style={[
+                  styles.runOcrPrimaryBtn,
+                  { backgroundColor: colors.primary, opacity: isOcrProcessing ? 0.7 : 1 },
+                ]}
+              >
+                {isOcrProcessing ? (
+                  <View style={styles.ocrLoadingRow}>
+                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.runOcrPrimaryBtnText}>{ocrStatus || t.extracting_ocr}</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Sparkles size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.runOcrPrimaryBtnText}>{t.run_ocr_button}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
               {onNavigate && (
                 <TouchableOpacity
                   onPress={() => onNavigate('ocr')}
-                  style={[styles.openOcrBtn, { backgroundColor: colors.primary }]}
+                  style={[styles.openOcrSecondaryBtn]}
                 >
-                  <Sparkles size={16} color="#fff" style={{ marginRight: 6 }} />
-                  <Text style={styles.openOcrBtnText}>Open Image to Text (OCR) Tool</Text>
+                  <Text style={[styles.openOcrSecondaryBtnText, { color: colors.textSecondary }]}>
+                    Open Dedicated OCR Tool →
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -456,7 +552,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {
@@ -737,5 +834,57 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  ocrLangSection: {
+    marginVertical: 10,
+  },
+  ocrLangLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  ocrLangButtonGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ocrLangBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  ocrLangBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  runOcrPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  ocrLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  runOcrPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  openOcrSecondaryBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  openOcrSecondaryBtnText: {
+    fontSize: 12,
+    textDecorationLine: 'underline',
   },
 });

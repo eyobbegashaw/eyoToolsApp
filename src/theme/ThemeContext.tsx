@@ -1,8 +1,29 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Language, ThemeMode, FontSize } from '../types';
 import { translations, Translations } from '../localization/translations';
+
+export interface ThemeFonts {
+  regular: string;
+  medium: string;
+  bold: string;
+}
+
+export const getThemeFonts = (language: Language): ThemeFonts => {
+  if (language === 'am') {
+    return {
+      regular: Platform.OS === 'web' ? "'Noto Serif Ethiopic', serif" : 'NotoSerifEthiopic-Regular',
+      medium: Platform.OS === 'web' ? "'Noto Serif Ethiopic', serif" : 'NotoSerifEthiopic-Regular',
+      bold: Platform.OS === 'web' ? "'Noto Serif Ethiopic', serif" : 'NotoSerifEthiopic-Bold',
+    };
+  }
+  return {
+    regular: Platform.OS === 'web' ? "'Ubuntu', sans-serif" : 'Ubuntu-Regular',
+    medium: Platform.OS === 'web' ? "'Ubuntu', sans-serif" : 'Ubuntu-Medium',
+    bold: Platform.OS === 'web' ? "'Ubuntu', sans-serif" : 'Ubuntu-Bold',
+  };
+};
 
 export interface ThemeColors {
   background: string;
@@ -83,6 +104,7 @@ interface ThemeContextType {
   fontSize: FontSize;
   fontScale: number;
   colors: ThemeColors;
+  fonts: ThemeFonts;
   t: Translations;
   setThemeMode: (mode: ThemeMode) => void;
   setLanguage: (lang: Language) => void;
@@ -163,6 +185,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fontScale = fontSize === 'small' ? 0.9 : fontSize === 'large' ? 1.15 : 1.0;
   const colors = isDark ? darkColors : lightColors;
+  const fonts = getThemeFonts(language);
   const t = translations[language] || translations.en;
 
   return (
@@ -174,6 +197,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fontSize,
         fontScale,
         colors,
+        fonts,
         t,
         setThemeMode,
         setLanguage,

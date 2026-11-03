@@ -28,7 +28,9 @@ export const QrGeneratorScreen: React.FC = () => {
   const { colors, t, language, fontScale } = useTheme();
   const qrRef = useRef<any>(null);
 
+  const [inputText, setInputText] = useState<string>('https://github.com/eyobbegashaw');
   const [qrValue, setQrValue] = useState<string>('https://github.com/eyobbegashaw');
+  const [justGenerated, setJustGenerated] = useState<boolean>(false);
   const [errorLevel, setErrorLevel] = useState<'L' | 'M' | 'Q' | 'H'>('M');
   const [fgColor, setFgColor] = useState<string>('#000000');
   const [bgColor, setBgColor] = useState<string>('#ffffff');
@@ -37,15 +39,38 @@ export const QrGeneratorScreen: React.FC = () => {
   const [isSharing, setIsSharing] = useState<boolean>(false);
 
   /**
+   * Explicitly Generate / Update the QR Code
+   */
+  const handleGenerateQr = () => {
+    const trimmed = inputText.trim();
+    if (!trimmed) {
+      Alert.alert(
+        t.error,
+        language === 'am' ? 'እባክዎ ፅሁፍ ወይም URL ያስገቡ' : 'Please enter text or a URL to generate QR code.'
+      );
+      return;
+    }
+    setQrValue(trimmed);
+    setJustGenerated(true);
+    setTimeout(() => setJustGenerated(false), 2200);
+  };
+
+  /**
    * Save / Download the QR code as PNG image
    */
   const handleSaveQr = async () => {
     if (isSaving) return;
+    const activeText = (inputText.trim() || qrValue).trim();
+    if (!activeText) {
+      Alert.alert(t.error, 'Please enter text or URL for QR code');
+      return;
+    }
+    setQrValue(activeText);
     setIsSaving(true);
 
     try {
       // Generate clean high-resolution (512x512) PNG data URL
-      const dataUrl = await QrService.generateQrDataUrl(qrValue, {
+      const dataUrl = await QrService.generateQrDataUrl(activeText, {
         fgColor,
         bgColor,
         errorLevel,
@@ -57,7 +82,7 @@ export const QrGeneratorScreen: React.FC = () => {
       await StorageService.addHistoryItem({
         toolId: 'qr',
         title: outputFileName,
-        snippet: qrValue,
+        snippet: activeText,
         fileSize: '512x512 PNG',
         fileType: 'QR',
       });
@@ -80,22 +105,28 @@ export const QrGeneratorScreen: React.FC = () => {
    */
   const handleShareQr = async () => {
     if (isSharing) return;
+    const activeText = (inputText.trim() || qrValue).trim();
+    if (!activeText) {
+      Alert.alert(t.error, 'Please enter text or URL for QR code');
+      return;
+    }
+    setQrValue(activeText);
     setIsSharing(true);
 
     try {
-      const dataUrl = await QrService.generateQrDataUrl(qrValue, {
+      const dataUrl = await QrService.generateQrDataUrl(activeText, {
         fgColor,
         bgColor,
         errorLevel,
         size: 512,
       });
 
-      const res = await QrService.shareQr(dataUrl, outputFileName, qrValue);
+      const res = await QrService.shareQr(dataUrl, outputFileName, activeText);
 
       await StorageService.addHistoryItem({
         toolId: 'qr',
         title: outputFileName,
-        snippet: qrValue,
+        snippet: activeText,
         fileSize: '512x512 PNG',
         fileType: 'QR',
       });
@@ -121,8 +152,11 @@ export const QrGeneratorScreen: React.FC = () => {
   };
 
   const handleLoadSample = (sample: string, defaultName: string) => {
+    setInputText(sample);
     setQrValue(sample);
     setOutputFileName(defaultName);
+    setJustGenerated(true);
+    setTimeout(() => setJustGenerated(false), 2200);
   };
 
   return (
@@ -155,8 +189,8 @@ export const QrGeneratorScreen: React.FC = () => {
           {t.enter_text_or_url}
         </Text>
         <TextInput
-          value={qrValue}
-          onChangeText={setQrValue}
+          value={inputText}
+          onChangeText={setInputText}
           placeholder="https://... or plain text"
           placeholderTextColor={colors.textMuted}
           style={[
@@ -213,6 +247,34 @@ export const QrGeneratorScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Primary Generate QR Code Action Button */}
+        <TouchableOpacity
+          onPress={handleGenerateQr}
+          style={[
+            styles.generateBtn,
+            {
+              backgroundColor: justGenerated ? '#10b981' : colors.primary,
+            },
+          ]}
+          activeOpacity={0.8}
+        >
+          {justGenerated ? (
+            <>
+              <CheckCircle2 size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.generateBtnText}>
+                {language === 'am' ? 'QR ኮድ ተፈጥሯል!' : 'QR Code Generated!'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <QrCode size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.generateBtnText}>
+                {language === 'am' ? 'QR ኮድ አመንጭ' : 'Generate QR Code'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* QR Matrix Preview & Controls */}
@@ -378,7 +440,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {
@@ -436,6 +499,19 @@ const styles = StyleSheet.create({
   },
   samplePillText: {
     fontSize: 10,
+    fontWeight: '700',
+  },
+  generateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  generateBtnText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '700',
   },
   previewCard: {

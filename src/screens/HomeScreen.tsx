@@ -32,102 +32,82 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistory }) => {
-  const { colors, t, language, fontScale } = useTheme();
+  const { colors, fonts, t, language, fontScale } = useTheme();
 
   const toolsList = [
     {
       id: 'pdf_extract' as ToolId,
       screen: 'pdf_extract' as ScreenId,
       title: t.pdf_extract,
-      description: t.pdf_extract_desc,
       icon: FileText,
       color: '#059669',
-      badge: 'Local',
     },
     {
       id: 'file_converter' as ToolId,
       screen: 'file_converter' as ScreenId,
       title: t.file_converter,
-      description: t.file_converter_desc,
       icon: ArrowRightLeft,
       color: '#0284c7',
-      badge: 'DOC•PPT•MD',
     },
     {
       id: 'md_editor' as ToolId,
       screen: 'md_editor' as ScreenId,
       title: t.md_editor,
-      description: t.md_editor_desc,
       icon: FileCode,
       color: '#8b5cf6',
-      badge: 'Studio',
     },
     {
       id: 'ocr' as ToolId,
       screen: 'ocr' as ScreenId,
       title: t.ocr,
-      description: t.ocr_desc,
       icon: ScanText,
       color: '#2563eb',
-      badge: 'Fidel',
     },
     {
       id: 'pdf_audio' as ToolId,
       screen: 'pdf_audio' as ScreenId,
       title: t.pdf_audio,
-      description: t.pdf_audio_desc,
       icon: Volume2,
       color: '#7c3aed',
-      badge: 'TTS',
     },
     {
       id: 'qr' as ToolId,
       screen: 'qr' as ScreenId,
       title: t.qr,
-      description: t.qr_desc,
       icon: QrCode,
       color: '#d97706',
-      badge: 'Gen',
     },
     {
       id: 'qr_reader' as ToolId,
       screen: 'qr_reader' as ScreenId,
       title: t.qr_reader,
-      description: t.qr_reader_desc,
       icon: Scan,
       color: '#0d9488',
-      badge: 'Scan',
     },
     {
       id: 'steganography' as ToolId,
       screen: 'steganography' as ScreenId,
       title: t.steganography,
-      description: t.steganography_desc,
       icon: ShieldCheck,
       color: '#4f46e5',
-      badge: 'LSB',
     },
     {
       id: 'bg_remover' as ToolId,
       screen: 'bg_remover' as ScreenId,
       title: t.bg_remover,
-      description: t.bg_remover_desc,
       icon: Scissors,
       color: '#e11d48',
-      badge: 'Mask',
     },
     {
       id: 'youtube' as ToolId,
       screen: 'youtube_dl' as ScreenId,
       title: t.youtube,
-      description: t.youtube_desc,
       icon: Video,
       color: '#dc2626',
-      badge: 'Stream',
     },
   ];
 
-  const defaultPopularTools: ToolId[] = ['pdf_extract', 'file_converter', 'qr'];
+  const defaultPopularTools: ToolId[] = ['pdf_extract', 'file_converter', 'ocr', 'qr'];
 
   const rankedPopularTools = (() => {
     const counts = new Map<ToolId, number>();
@@ -142,17 +122,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
         if (countDiff !== 0) return countDiff;
         return defaultPopularTools.indexOf(a) - defaultPopularTools.indexOf(b);
       })
-      .slice(0, 3);
+      .slice(0, 4);
 
-    if (orderedIds.length < 3) {
+    if (orderedIds.length < 4) {
       defaultPopularTools.forEach((toolId) => {
-        if (!orderedIds.includes(toolId)) {
+        if (!orderedIds.includes(toolId) && orderedIds.length < 4) {
           orderedIds.push(toolId);
         }
       });
     }
 
-    return orderedIds.slice(0, 3);
+    return orderedIds.slice(0, 4);
   })();
 
   const popularTools = toolsList.filter((tool) => rankedPopularTools.includes(tool.id));
@@ -187,9 +167,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
     },
   ];
 
-  const displayHistory = recentHistory.length >= 3 
-    ? recentHistory.slice(0, 3)
-    : [...recentHistory, ...defaultHistoryItems].slice(0, 3);
+  const displayHistory =
+    recentHistory.length >= 3
+      ? recentHistory.slice(0, 3)
+      : [...recentHistory, ...defaultHistoryItems].slice(0, 3);
 
   return (
     <ScrollView
@@ -197,102 +178,147 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
+      {/* Enterprise Compact Hero Card */}
       <LinearGradient
-        colors={['#0f172a', '#0b1120', '#0369a1']}
+        colors={['#0b1329', '#0f1f3d', '#0284c7']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.heroCard}
       >
         <View style={styles.heroTopRow}>
           <View style={styles.pillBadge}>
-            <Text style={styles.pillText}>{t.cs_students}</Text>
+            <Sparkles size={11} color="#38bdf8" style={{ marginRight: 4 }} />
+            <Text style={[styles.pillText, { fontFamily: fonts.bold }]}>
+              {t.cs_students}
+            </Text>
           </View>
-          <Text style={styles.heroVersion}>v1.0.0</Text>
+          <Text style={[styles.heroVersion, { fontFamily: fonts.medium }]}>v1.0.0</Text>
         </View>
 
-        <Text style={[styles.heroTitle, { fontSize: 20 * fontScale }]}>{t.welcome}</Text>
-        <Text style={styles.heroSub}>{t.welcome_sub}</Text>
+        <Text
+          style={[
+            styles.heroTitle,
+            { fontSize: 19 * fontScale, fontFamily: fonts.bold },
+          ]}
+        >
+          {t.welcome}
+        </Text>
+        <Text style={[styles.heroSub, { fontFamily: fonts.regular }]}>
+          {t.welcome_sub}
+        </Text>
 
         <View style={styles.heroMetrics}>
           <View style={styles.metricBox}>
-            <Text style={styles.metricValue}>{popularTools.length}</Text>
-            <Text style={styles.metricLabel}>Smart picks</Text>
+            <Text style={[styles.metricValue, { fontFamily: fonts.bold }]}>10</Text>
+            <Text style={[styles.metricLabel, { fontFamily: fonts.medium }]}>
+              {language === 'am' ? 'መሳሪያዎች' : 'Core Tools'}
+            </Text>
           </View>
           <View style={styles.metricBox}>
-            <Text style={styles.metricValue}>{displayHistory.length}</Text>
-            <Text style={styles.metricLabel}>Recent</Text>
+            <Text style={[styles.metricValue, { fontFamily: fonts.bold }]}>
+              {popularTools.length}
+            </Text>
+            <Text style={[styles.metricLabel, { fontFamily: fonts.medium }]}>
+              {language === 'am' ? 'ምርጥ ምርጫ' : 'Smart Picks'}
+            </Text>
           </View>
           <View style={styles.metricBox}>
-            <Text style={styles.metricValue}>3+</Text>
-            <Text style={styles.metricLabel}>Quick access</Text>
+            <Text style={[styles.metricValue, { fontFamily: fonts.bold }]}>100%</Text>
+            <Text style={[styles.metricLabel, { fontFamily: fonts.medium }]}>
+              {language === 'am' ? 'ደህንነቱ የተጠበቀ' : 'Offline Safe'}
+            </Text>
           </View>
         </View>
       </LinearGradient>
 
+      {/* Most Used Tools Section Header */}
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Most used tools</Text>
-          <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
-            {language === 'am' ? 'በተደጋጋሚ የሚጠቀሙት' : 'Based on your recent activity'}
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.text, fontSize: 14 * fontScale, fontFamily: fonts.bold },
+            ]}
+          >
+            {language === 'am' ? 'በተደጋጋሚ የሚጠቀሙት' : 'Most Used Tools'}
+          </Text>
+          <Text
+            style={[
+              styles.sectionSub,
+              { color: colors.textMuted, fontSize: 11 * fontScale, fontFamily: fonts.regular },
+            ]}
+          >
+            {language === 'am' ? 'በቅርብ የተጠቀሟቸው ፈጣን መሳሪያዎች' : 'Quick access to your top utilities'}
           </Text>
         </View>
 
         <TouchableOpacity onPress={() => onNavigate('tools')} style={styles.viewAllBtn}>
-          <Text style={[styles.viewAllText, { color: colors.cyan }]}>{t.view_all_tools}</Text>
+          <Text
+            style={[
+              styles.viewAllText,
+              { color: colors.cyan, fontSize: 11.5 * fontScale, fontFamily: fonts.bold },
+            ]}
+          >
+            {t.view_all_tools}
+          </Text>
           <ArrowRight size={13} color={colors.cyan} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.smartPicksWrap}>
-        {popularTools.map((item) => {
-          const Icon = item.icon;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              activeOpacity={0.9}
-              onPress={() => onNavigate(item.screen)}
-              style={[
-                styles.smartPickCard,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.cardBorder,
-                },
-              ]}
-            >
-              <View style={[styles.smartIcon, { backgroundColor: item.color }]}>
-                <Icon size={18} color="#fff" />
-              </View>
-              <Text style={[styles.smartTitle, { color: colors.text }]}>{item.title}</Text>
-              <Text style={[styles.smartDescription, { color: colors.textSecondary }]}>
-                {item.description}
-              </Text>
-              <View style={styles.smartFooter}>
-                <Text style={[styles.smartBadge, { color: item.color }]}>{item.badge}</Text>
-                <ArrowRight size={12} color={item.color} />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+      {/* 2-Column Most Used Tools Grid (Icon + Name Only) */}
+      <View style={styles.twoColumnGrid}>
+        {popularTools.map((item) => (
+          <ToolCard
+            key={item.id}
+            title={item.title}
+            icon={item.icon}
+            color={item.color}
+            mode="grid"
+            onPress={() => onNavigate(item.screen)}
+          />
+        ))}
       </View>
 
+      {/* Recent Activity Section */}
       <View style={styles.historySection}>
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.recent_activity}</Text>
-            <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
-              {recentHistory.length} items logged
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: colors.text, fontSize: 14 * fontScale, fontFamily: fonts.bold },
+              ]}
+            >
+              {t.recent_activity}
+            </Text>
+            <Text
+              style={[
+                styles.sectionSub,
+                { color: colors.textMuted, fontSize: 11 * fontScale, fontFamily: fonts.regular },
+              ]}
+            >
+              {recentHistory.length} {language === 'am' ? 'የተመዘገቡ ስራዎች' : 'items processed'}
             </Text>
           </View>
 
           <TouchableOpacity onPress={() => onNavigate('history')} style={styles.viewAllBtn}>
-            <Text style={[styles.viewAllText, { color: colors.cyan }]}>{t.history}</Text>
+            <Text
+              style={[
+                styles.viewAllText,
+                { color: colors.cyan, fontSize: 11.5 * fontScale, fontFamily: fonts.bold },
+              ]}
+            >
+              {t.history}
+            </Text>
             <ArrowRight size={13} color={colors.cyan} />
           </TouchableOpacity>
         </View>
 
         {displayHistory.map((item) => (
-          <View
+          <TouchableOpacity
             key={item.id}
+            activeOpacity={0.8}
+            onPress={() => onNavigate(item.toolId as ScreenId)}
             style={[
               styles.historyCard,
               {
@@ -302,20 +328,43 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, recentHistor
             ]}
           >
             <View style={styles.historyRow}>
-              <Clock size={14} color={colors.cyan} style={{ marginRight: 8 }} />
-              <Text numberOfLines={1} style={[styles.historyTitle, { color: colors.text }]}>
+              <View style={[styles.historyIconWrap, { backgroundColor: colors.cardSecondary }]}>
+                <Clock size={13} color={colors.cyan} />
+              </View>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.historyTitle,
+                  { color: colors.text, fontFamily: fonts.bold, fontSize: 13 * fontScale },
+                ]}
+              >
                 {item.title}
               </Text>
-              {item.fileSize && (
-                <Text style={[styles.historySize, { color: colors.textMuted }]}>{item.fileSize}</Text>
+              {item.fileType && (
+                <View style={[styles.fileTypeBadge, { backgroundColor: colors.cardSecondary }]}>
+                  <Text
+                    style={[
+                      styles.fileTypeText,
+                      { color: colors.primaryLight, fontFamily: fonts.bold },
+                    ]}
+                  >
+                    {item.fileType}
+                  </Text>
+                </View>
               )}
             </View>
             {item.snippet ? (
-              <Text numberOfLines={1} style={[styles.historySnippet, { color: colors.textSecondary }]}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.historySnippet,
+                  { color: colors.textSecondary, fontFamily: fonts.regular },
+                ]}
+              >
                 {item.snippet}
               </Text>
             ) : null}
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     </ScrollView>
@@ -327,199 +376,139 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6, // Reduced top padding
     paddingBottom: 28,
   },
   heroCard: {
-    borderRadius: 24,
-    padding: 18,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 14,
-    elevation: 4,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
+    elevation: 3,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.16)',
   },
   heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   pillBadge: {
-    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   pillText: {
     color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '800',
+    fontSize: 9.5,
     textTransform: 'uppercase',
   },
   heroVersion: {
     color: '#bae6fd',
     fontSize: 10,
-    fontFamily: 'monospace',
   },
   heroTitle: {
-    fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 0.2,
+    marginBottom: 2,
   },
   heroSub: {
     color: '#e0f2fe',
-    fontSize: 12,
-    marginTop: 2,
-    fontWeight: '500',
+    fontSize: 11.5,
+    lineHeight: 16,
   },
   heroMetrics: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 18,
-    gap: 10,
+    marginTop: 14,
+    gap: 8,
   },
   metricBox: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
   metricValue: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: 15,
   },
   metricLabel: {
     color: '#bae6fd',
-    fontSize: 10,
-    marginTop: 4,
-    fontWeight: '700',
-  },
-  quoteBox: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  quoteText: {
-    color: '#f0f9ff',
-    fontSize: 11,
-    fontStyle: 'italic',
-    lineHeight: 16,
-  },
-  smartPicksWrap: {
-    gap: 10,
-    marginBottom: 8,
-  },
-  smartPickCard: {
-    padding: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-    boxShadow: '0px 4px 12px rgba(15, 23, 42, 0.12)',
-  },
-  smartIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  smartTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  smartDescription: {
-    fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 10,
-  },
-  smartFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  smartBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  quickActionsWrap: {
-    marginBottom: 16,
-    marginHorizontal: -16,
-  },
-  quickActionsScroll: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  quickPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  quickPillText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 9.5,
+    marginTop: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   sectionSub: {
-    fontSize: 11,
     marginTop: 1,
   },
   viewAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-  },
-  viewAllText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  toolsGrid: {
     gap: 4,
   },
+  viewAllText: {},
+  // 2-Column Grid Layout for Most Used Tools
+  twoColumnGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
   historySection: {
-    marginTop: 16,
+    marginTop: 4,
   },
   historyCard: {
-    padding: 12,
     borderRadius: 14,
     borderWidth: 1,
+    padding: 12,
     marginBottom: 8,
+    elevation: 1,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.06)',
   },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 4,
+  },
+  historyIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   historyTitle: {
-    fontSize: 12,
-    fontWeight: '700',
     flex: 1,
   },
-  historySize: {
-    fontSize: 10,
-    fontFamily: 'monospace',
+  fileTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  fileTypeText: {
+    fontSize: 9.5,
   },
   historySnippet: {
     fontSize: 11,
-    marginTop: 4,
+    lineHeight: 15,
+    marginLeft: 32,
   },
 });

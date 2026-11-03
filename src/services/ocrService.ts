@@ -68,6 +68,20 @@ export class OCRService {
       return imageUri;
     }
 
+    // Handle remote HTTP/HTTPS images (e.g. samples or CDN assets)
+    if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+      try {
+        const tmpPath = `${FileSystem.cacheDirectory}ocr_sample_tmp.jpg`;
+        const downloadRes = await FileSystem.downloadAsync(imageUri, tmpPath);
+        const rawBase64 = await FileSystem.readAsStringAsync(downloadRes.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return `data:image/jpeg;base64,${rawBase64}`;
+      } catch {
+        return imageUri;
+      }
+    }
+
     try {
       const rawBase64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -88,12 +102,20 @@ export class OCRService {
     base64Data: string,
     lang: 'eng' | 'amh'
   ): Promise<OCRResult | null> {
-    if (typeof window === 'undefined') return null;
+    // Only available on Web when a valid location origin is present
+    if (
+      Platform.OS !== 'web' ||
+      typeof window === 'undefined' ||
+      !window.location ||
+      !window.location.origin
+    ) {
+      return null;
+    }
 
     const candidateEndpoints = [
       'http://localhost:3001/api/ocr',
       `${window.location.origin}/api/ocr`,
-    ];
+    ].filter(Boolean);
 
     for (const endpoint of candidateEndpoints) {
       try {
@@ -261,25 +283,22 @@ export class OCRService {
         onProgress(35, `Running Local OCR Engine (${lang === 'amh' ? 'Ethiopic / Amharic Fidel' : 'English'})...`);
       }
 
-      // 2. Primary: Local Tesseract Server with amh.traineddata / eng.traineddata
-      const localResult = await this.runLocalTesseractOCR(optimizedBase64, lang);
-      if (localResult && localResult.text) {
-        if (onProgress) {
-          onProgress(100, 'Recognition complete!');
+      // 2. Web-Only: Local Tesseract Server or In-browser WebAssembly
+      if (Platform.OS === 'web') {
+        const localResult = await this.runLocalTesseractOCR(optimizedBase64, lang);
+        if (localResult && localResult.text) {
+          if (onProgress) onProgress(100, 'Recognition complete!');
+          return localResult;
         }
-        return localResult;
-      }
 
-      // 3. Secondary: In-browser Tesseract.js WebAssembly
-      if (onProgress) {
-        onProgress(50, 'Processing with Tesseract WebAssembly engine...');
-      }
-      const browserResult = await this.runBrowserTesseract(optimizedBase64, lang, onProgress);
-      if (browserResult && browserResult.text) {
         if (onProgress) {
-          onProgress(100, 'Recognition complete!');
+          onProgress(50, 'Processing with Tesseract WebAssembly engine...');
         }
-        return browserResult;
+        const browserResult = await this.runBrowserTesseract(optimizedBase64, lang, onProgress);
+        if (browserResult && browserResult.text) {
+          if (onProgress) onProgress(100, 'Recognition complete!');
+          return browserResult;
+        }
       }
 
       // 4. Tertiary Fallback: Cloud OCR (safe from 413 because payload is < 350KB)

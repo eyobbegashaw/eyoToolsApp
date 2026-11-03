@@ -5,6 +5,7 @@ import {
   Text,
   ScrollView,
   TextInput,
+  TouchableOpacity,
 } from 'react-native';
 import {
   Search,
@@ -18,6 +19,8 @@ import {
   Scissors,
   ArrowRightLeft,
   FileCode,
+  X,
+  Layers,
 } from 'lucide-react-native';
 import { ScreenId, ToolId } from '../types';
 import { useTheme } from '../theme/ThemeContext';
@@ -28,127 +31,122 @@ interface ToolsScreenProps {
 }
 
 export const ToolsScreen: React.FC<ToolsScreenProps> = ({ onNavigate }) => {
-  const { colors, t, fontScale } = useTheme();
+  const { colors, fonts, t, language, fontScale } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
 
   const toolCategories = [
     {
-      category: 'Document & Audio',
+      id: 'doc',
+      category: language === 'am' ? 'ሰነዶች እና ድምጽ' : 'Document & Audio',
       items: [
         {
           id: 'pdf_extract' as ToolId,
           screen: 'pdf_extract' as ScreenId,
           title: t.pdf_extract,
-          description: t.pdf_extract_desc,
           icon: FileText,
           color: '#059669',
-          badge: '100% Offline',
         },
         {
           id: 'file_converter' as ToolId,
           screen: 'file_converter' as ScreenId,
           title: t.file_converter,
-          description: t.file_converter_desc,
           icon: ArrowRightLeft,
           color: '#0284c7',
-          badge: 'DOC•PPT•MD',
         },
         {
           id: 'md_editor' as ToolId,
           screen: 'md_editor' as ScreenId,
           title: t.md_editor,
-          description: t.md_editor_desc,
           icon: FileCode,
           color: '#8b5cf6',
-          badge: 'Studio & PDF',
         },
         {
           id: 'pdf_audio' as ToolId,
           screen: 'pdf_audio' as ScreenId,
           title: t.pdf_audio,
-          description: t.pdf_audio_desc,
           icon: Volume2,
           color: '#7c3aed',
-          badge: 'TTS Voice',
         },
       ],
     },
     {
-      category: 'Vision & OCR',
+      id: 'vision',
+      category: language === 'am' ? 'ምስል እና ንባብ (OCR)' : 'Vision & OCR',
       items: [
         {
           id: 'ocr' as ToolId,
           screen: 'ocr' as ScreenId,
           title: t.ocr,
-          description: t.ocr_desc,
           icon: ScanText,
           color: '#2563eb',
-          badge: 'Amharic + Eng',
         },
         {
           id: 'bg_remover' as ToolId,
           screen: 'bg_remover' as ScreenId,
           title: t.bg_remover,
-          description: t.bg_remover_desc,
           icon: Scissors,
           color: '#e11d48',
-          badge: 'Alpha Mask',
         },
       ],
     },
     {
-      category: 'Security & Network Utilities',
+      id: 'security',
+      category: language === 'am' ? 'ደህንነት እና ጠቃሚ መተግበሪያዎች' : 'Security & Utilities',
       items: [
         {
           id: 'steganography' as ToolId,
           screen: 'steganography' as ScreenId,
           title: t.steganography,
-          description: t.steganography_desc,
           icon: ShieldCheck,
           color: '#4f46e5',
-          badge: '16-bit LSB',
         },
         {
           id: 'qr' as ToolId,
           screen: 'qr' as ScreenId,
           title: t.qr,
-          description: t.qr_desc,
           icon: QrCode,
           color: '#d97706',
-          badge: 'Generator',
         },
         {
           id: 'qr_reader' as ToolId,
           screen: 'qr_reader' as ScreenId,
           title: t.qr_reader,
-          description: t.qr_reader_desc,
           icon: Scan,
           color: '#0d9488',
-          badge: 'Scanner',
         },
         {
           id: 'youtube' as ToolId,
           screen: 'youtube_dl' as ScreenId,
           title: t.youtube,
-          description: t.youtube_desc,
           icon: Video,
           color: '#dc2626',
-          badge: 'Media Stream',
         },
       ],
     },
   ];
 
+  const categoryFilters = [
+    { id: 'all', label: language === 'am' ? 'ሁሉም (10)' : 'All Tools (10)' },
+    { id: 'doc', label: language === 'am' ? 'ሰነድ' : 'Document' },
+    { id: 'vision', label: language === 'am' ? 'ምስል' : 'Vision' },
+    { id: 'security', label: language === 'am' ? 'ደህንነት' : 'Security' },
+  ];
+
   const filteredCategories = toolCategories
+    .filter((cat) => activeCategory === 'all' || cat.id === activeCategory)
     .map((category) => ({
       ...category,
-      items: category.items.filter(
-        (tool) =>
-          tool.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          tool.description.toLowerCase().includes(searchQuery.toLowerCase())
+      items: category.items.filter((tool) =>
+        tool.title.toLowerCase().includes(searchQuery.toLowerCase())
       ),
     }))
     .filter((cat) => cat.items.length > 0);
+
+  const totalVisibleCount = filteredCategories.reduce(
+    (acc, cat) => acc + cat.items.length,
+    0
+  );
 
   return (
     <ScrollView
@@ -156,7 +154,7 @@ export const ToolsScreen: React.FC<ToolsScreenProps> = ({ onNavigate }) => {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Search Bar */}
+      {/* Enterprise Compact Search Bar */}
       <View
         style={[
           styles.searchBar,
@@ -170,45 +168,115 @@ export const ToolsScreen: React.FC<ToolsScreenProps> = ({ onNavigate }) => {
         <TextInput
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search all tools and utilities..."
+          placeholder={language === 'am' ? 'መሳሪያዎችን ይፈልጉ...' : 'Search utilities...'}
           placeholderTextColor={colors.textMuted}
-          style={[styles.searchInput, { color: colors.text, fontSize: 13 * fontScale }]}
+          style={[
+            styles.searchInput,
+            { color: colors.text, fontSize: 13 * fontScale, fontFamily: fonts.regular },
+          ]}
         />
+        {searchQuery ? (
+          <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <X size={15} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.countPill, { backgroundColor: colors.cardSecondary }]}>
+            <Text style={[styles.countPillText, { color: colors.cyan, fontFamily: fonts.bold }]}>
+              {totalVisibleCount}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Categorized Lists */}
-      {filteredCategories.map((group) => (
-        <View key={group.category} style={styles.categoryWrap}>
-          <Text
-            style={[
-              styles.categoryTitle,
-              {
-                color: colors.cyan,
-                fontSize: 12 * fontScale,
-              },
-            ]}
-          >
-            {group.category}
-          </Text>
+      {/* Category Filter Pills */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryFilterScroll}
+        contentContainerStyle={styles.categoryFilterContainer}
+      >
+        {categoryFilters.map((tab) => {
+          const isSelected = activeCategory === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              activeOpacity={0.8}
+              onPress={() => setActiveCategory(tab.id)}
+              style={[
+                styles.categoryFilterPill,
+                {
+                  backgroundColor: isSelected ? colors.primary : colors.card,
+                  borderColor: isSelected ? colors.primary : colors.cardBorder,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryFilterText,
+                  {
+                    color: isSelected ? '#ffffff' : colors.textSecondary,
+                    fontFamily: isSelected ? fonts.bold : fonts.medium,
+                  },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
-          {group.items.map((item) => (
-            <ToolCard
-              key={item.id}
-              title={item.title}
-              description={item.description}
-              icon={item.icon}
-              color={item.color}
-              badge={item.badge}
-              onPress={() => onNavigate(item.screen)}
-            />
-          ))}
+      {/* 2-Column Tools Grid by Category (Icon + Name Only) */}
+      {filteredCategories.map((group) => (
+        <View key={group.category} style={styles.categorySection}>
+          <View style={styles.categoryHeaderRow}>
+            <Text
+              style={[
+                styles.categoryTitle,
+                {
+                  color: colors.cyan,
+                  fontSize: 12 * fontScale,
+                  fontFamily: fonts.bold,
+                },
+              ]}
+            >
+              {group.category}
+            </Text>
+            <View style={[styles.catCountBadge, { backgroundColor: colors.cardSecondary }]}>
+              <Text style={[styles.catCountText, { color: colors.textMuted, fontFamily: fonts.medium }]}>
+                {group.items.length}
+              </Text>
+            </View>
+          </View>
+
+          {/* 2-Column Grid */}
+          <View style={styles.twoColumnGrid}>
+            {group.items.map((item) => (
+              <ToolCard
+                key={item.id}
+                title={item.title}
+                icon={item.icon}
+                color={item.color}
+                mode="grid"
+                onPress={() => onNavigate(item.screen)}
+              />
+            ))}
+          </View>
         </View>
       ))}
 
       {filteredCategories.length === 0 && (
         <View style={styles.emptyWrap}>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            No tools found matching "{searchQuery}".
+          <Layers size={36} color={colors.textMuted} style={{ marginBottom: 12, opacity: 0.5 }} />
+          <Text
+            style={[
+              styles.emptyText,
+              { color: colors.textMuted, fontFamily: fonts.medium },
+            ]}
+          >
+            {language === 'am'
+              ? `"${searchQuery}" የሚል መሳሪያ አልተገኘም`
+              : `No utilities found matching "${searchQuery}".`}
           </Text>
         </View>
       )}
@@ -221,37 +289,81 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6, // Reduced top padding
     paddingBottom: 28,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    height: 44,
+    height: 42,
     borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   searchInput: {
     flex: 1,
     height: '100%',
   },
-  categoryWrap: {
-    marginBottom: 12,
+  countPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  categoryTitle: {
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  countPillText: {
+    fontSize: 10,
+  },
+  categoryFilterScroll: {
+    marginBottom: 14,
+  },
+  categoryFilterContainer: {
+    gap: 6,
+  },
+  categoryFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  categoryFilterText: {
+    fontSize: 11,
+  },
+  categorySection: {
+    marginBottom: 8,
+  },
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
     marginLeft: 2,
   },
+  categoryTitle: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  catCountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  catCountText: {
+    fontSize: 10,
+  },
+  // 2-Column Grid Layout for Tools
+  twoColumnGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   emptyWrap: {
     alignItems: 'center',
-    paddingVertical: 40,
+    justifyContent: 'center',
+    paddingVertical: 48,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 12.5,
+    textAlign: 'center',
   },
 });

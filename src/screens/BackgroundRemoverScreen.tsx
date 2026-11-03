@@ -17,7 +17,6 @@ import {
   Image as ImageIcon,
   Download,
   Sparkles,
-  Info,
   CheckCircle2,
   Eye,
   Layers,
@@ -31,7 +30,6 @@ export const BackgroundRemoverScreen: React.FC = () => {
   const { colors, t, language, fontScale } = useTheme();
 
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [tolerance, setTolerance] = useState<number>(28);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [resultUri, setResultUri] = useState<string | null>(null);
   const [outputFileName, setOutputFileName] = useState<string>('subject_cutout.png');
@@ -39,7 +37,7 @@ export const BackgroundRemoverScreen: React.FC = () => {
   const [backdropColor, setBackdropColor] = useState<'transparent' | '#ffffff' | '#1e293b' | '#2563eb'>(
     'transparent'
   );
-  const [activeEngine, setActiveEngine] = useState<string>('ONNX Runtime (U2Net AI)');
+  const [activeEngine, setActiveEngine] = useState<string>('Front-Preserving AI Cutout');
 
   const handlePickImage = async () => {
     try {
@@ -79,18 +77,18 @@ export const BackgroundRemoverScreen: React.FC = () => {
     setIsProcessing(true);
     try {
       const result = await BackgroundRemovalService.removeBackground(imageUri, {
-        tolerance,
         feather: 3,
+        backgroundColor: backdropColor === 'transparent' ? null : backdropColor,
       });
 
       setResultUri(result.outputUri);
-      setActiveEngine(result.engine || 'ONNX Runtime (U2Net AI Neural Model)');
+      setActiveEngine(result.engine || 'Front-Preserving AI Cutout');
       setPreviewTab('cutout');
 
       await StorageService.addHistoryItem({
         toolId: 'bg_remover',
         title: outputFileName,
-        snippet: `${result.engine || 'U2Net Neural AI'} (Sensitivity: ${tolerance}, Resolution: ${result.width}x${result.height})`,
+        snippet: `${result.engine || 'Front-Preserving AI'} (${result.width}x${result.height})`,
         fileSize: `${Math.round(result.fileSizeBytes / 1024)} KB`,
         fileType: 'PNG',
       });
@@ -141,35 +139,6 @@ export const BackgroundRemoverScreen: React.FC = () => {
               {t.bg_remover_desc}
             </Text>
           </View>
-        </View>
-
-        {/* Tolerance Controls */}
-        <Text style={[styles.label, { color: colors.textMuted }]}>
-          {t.bg_threshold}: {tolerance} (Color Matting Sensitivity)
-        </Text>
-        <View style={styles.toleranceRow}>
-          {[15, 25, 35, 50, 65].map((val) => (
-            <TouchableOpacity
-              key={val}
-              onPress={() => setTolerance(val)}
-              style={[
-                styles.toleranceBtn,
-                {
-                  backgroundColor:
-                    tolerance === val ? colors.primary : colors.cardSecondary,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.toleranceText,
-                  { color: tolerance === val ? '#fff' : colors.textSecondary },
-                ]}
-              >
-                {val}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
 
         {/* Input Action Buttons */}
@@ -426,7 +395,7 @@ export const BackgroundRemoverScreen: React.FC = () => {
                 >
                   <Scissors size={14} color={colors.text} style={{ marginRight: 5 }} />
                   <Text style={[styles.reprocessBtnText, { color: colors.text }]}>
-                    Re-cut ({tolerance})
+                    {language === 'am' ? 'እንደገና ቆርጥ' : 'Re-process'}
                   </Text>
                 </TouchableOpacity>
 
@@ -444,19 +413,6 @@ export const BackgroundRemoverScreen: React.FC = () => {
           )}
         </View>
       )}
-
-      {/* Info Callout */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          {t.bg_algorithm_info}
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -466,7 +422,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {
@@ -503,22 +460,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 6,
-  },
-  toleranceRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  toleranceBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toleranceText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   actionsRow: {
     gap: 8,
@@ -716,16 +657,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
-  },
-  infoCard: {
-    flexDirection: 'row',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  infoText: {
-    fontSize: 11,
-    lineHeight: 16,
-    flex: 1,
   },
 });

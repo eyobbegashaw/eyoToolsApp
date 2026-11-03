@@ -5,35 +5,40 @@ import { VideoInfo, VideoQuality } from '../types';
 
 export class VideoDownloaderService {
   /**
-   * Verified sample URLs for quick testing (YouTube, TikTok, and direct streams)
+   * Verified working sample URLs for quick testing (Direct MP4, TikTok, CC0 Video, YouTube)
    */
   static getSampleUrls() {
     return [
       {
-        title: 'TikTok (Pets of TikTok - Verified No Watermark HD)',
+        title: 'W3Schools Bunny (Direct 720p MP4)',
+        url: 'https://www.w3schools.com/html/mov_bbb.mp4',
+        platform: 'direct',
+      },
+      {
+        title: 'TikTok (Pets of TikTok - No Watermark HD)',
         url: 'https://www.tiktok.com/@scout2015/video/6718335390845095173',
         platform: 'tiktok',
+      },
+      {
+        title: 'MDN Flower (CC0 Fast Direct MP4)',
+        url: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+        platform: 'direct',
+      },
+      {
+        title: 'Internet Archive Feature Movie (Direct 720p)',
+        url: 'https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4',
+        platform: 'direct',
       },
       {
         title: 'YouTube (Rick Astley - Never Gonna Give You Up)',
         url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         platform: 'youtube',
       },
-      {
-        title: 'Big Buck Bunny (Direct 720p Open Movie MP4)',
-        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        platform: 'direct',
-      },
-      {
-        title: 'Elephants Dream (Creative Commons 1080p MP4)',
-        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-        platform: 'direct',
-      },
     ];
   }
 
   /**
-   * Inspect and extract streams from YouTube, TikTok (No Watermark), or direct media URLs
+   * Inspect and extract streams from Direct Media URLs, TikTok (No Watermark), YouTube, or Web Streams
    */
   static async fetchVideoInfo(url: string): Promise<VideoInfo> {
     const cleanUrl = url.trim();
@@ -45,39 +50,113 @@ export class VideoDownloaderService {
       throw new Error('URL must start with http:// or https://');
     }
 
-    // 1. Try local extraction server
-    const endpoints = [
-      'http://localhost:3001/api/extract-video',
-      typeof window !== 'undefined' ? `${window.location.origin}/api/extract-video` : '',
-    ].filter(Boolean);
+    // 1. Try local extraction server ONLY on Web (never block mobile native)
+    if (Platform.OS === 'web') {
+      const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+      const endpoints = [
+        origin ? `${origin}/api/extract-video` : '',
+        'http://localhost:3001/api/extract-video',
+      ].filter(Boolean);
 
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: cleanUrl }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && data.info) {
-            return data.info as VideoInfo;
+      for (const ep of endpoints) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1200);
+          const res = await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: cleanUrl }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.success && data.info) {
+              return data.info as VideoInfo;
+            }
           }
+        } catch {
+          // Fallback to client-side extraction immediately
         }
-      } catch {
-        // Fallback to client-side extraction
       }
     }
 
-    // 2. Direct client fallback for TikTok (No Watermark via TikWM)
     const lower = cleanUrl.toLowerCase();
+
+    // 2. YouTube Metadata Extraction via Official oEmbed
+    if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
+      const videoIdMatch = cleanUrl.match(
+        /(?:v=|\/embed\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/
+      );
+      const videoId = videoIdMatch ? videoIdMatch[1] : '';
+
+      let title = 'YouTube Video';
+      let author = 'YouTube Creator';
+      let thumbnail = videoId
+        ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+        : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80';
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const oembedRes = await fetch(
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`,
+          {
+            signal: controller.signal,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            },
+          }
+        );
+        clearTimeout(timeoutId);
+        if (oembedRes.ok) {
+          const data = await oembedRes.json();
+          title = data.title || title;
+          author = data.author_name || author;
+          thumbnail = data.thumbnail_url || thumbnail;
+        }
+      } catch {
+        // Continue with default YouTube info
+      }
+
+      return {
+        title,
+        thumbnail,
+        duration: 'YouTube Video',
+        author,
+        views: 'Official YouTube Stream',
+        platform: 'youtube',
+        qualities: [
+          {
+            label: 'YouTube Protected Stream (Online Play)',
+            format: 'mp4',
+            resolution: 'Official YouTube Quality',
+            type: 'video',
+            size: 'Protected Stream',
+            url: cleanUrl,
+          },
+        ],
+      };
+    }
+
+    // 3. TikTok Extraction (No Watermark via TikWM)
     if (lower.includes('tiktok.com')) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const res = await fetch('https://www.tikwm.com/api/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent':
+              'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          },
           body: 'url=' + encodeURIComponent(cleanUrl),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
+
         const json = await res.json();
         if (json.code === 0 && json.data) {
           const d = json.data;
@@ -102,7 +181,7 @@ export class VideoDownloaderService {
               resolution: '720p Clean',
               type: 'video',
               isWatermarkFree: true,
-              size: d.size ? `${(d.size / (1024 * 1024)).toFixed(1)} MB` : 'Original MP4',
+              size: d.size ? `${(d.size / (1024 * 1024)).toFixed(1)} MB` : 'Clean MP4',
               url: d.play,
             });
           }
@@ -116,6 +195,18 @@ export class VideoDownloaderService {
               isWatermarkFree: true,
               size: 'Soundtrack MP3',
               url: d.music,
+            });
+          }
+
+          if (qualities.length === 0 && d.wmplay) {
+            qualities.push({
+              label: 'Original Video (MP4)',
+              format: 'mp4',
+              resolution: '720p Standard',
+              type: 'video',
+              isWatermarkFree: false,
+              size: 'Direct MP4',
+              url: d.wmplay,
             });
           }
 
@@ -134,21 +225,67 @@ export class VideoDownloaderService {
       }
     }
 
-    // 3. Direct Media Stream Fallback
+    // 4. Direct Media Stream (MP4, MP3, WebM, MOV, Audio, Video)
     let contentLength = 0;
     let contentType = '';
+    const browserUA =
+      'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+
     try {
-      const headRes = await fetch(cleanUrl, { method: 'HEAD' });
+      const headController = new AbortController();
+      const headTimeout = setTimeout(() => headController.abort(), 4000);
+      const headRes = await fetch(cleanUrl, {
+        method: 'HEAD',
+        headers: {
+          'User-Agent': browserUA,
+          Accept: '*/*',
+        },
+        signal: headController.signal,
+      });
+      clearTimeout(headTimeout);
+
       if (headRes.ok) {
         contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
         contentType = headRes.headers.get('content-type') || '';
-      }
-    } catch {}
+      } else {
+        // Fallback to lightweight byte range request if HEAD is rejected by CDN
+        const rangeController = new AbortController();
+        const rangeTimeout = setTimeout(() => rangeController.abort(), 4000);
+        const rangeRes = await fetch(cleanUrl, {
+          method: 'GET',
+          headers: {
+            'User-Agent': browserUA,
+            Range: 'bytes=0-10',
+          },
+          signal: rangeController.signal,
+        });
+        clearTimeout(rangeTimeout);
 
-    const urlPath = cleanUrl.split('?')[0];
-    const rawFileName = urlPath.split('/').pop() || 'media_stream.mp4';
+        if (rangeRes.ok || rangeRes.status === 206) {
+          contentType = rangeRes.headers.get('content-type') || '';
+          const cr = rangeRes.headers.get('content-range');
+          if (cr && cr.includes('/')) {
+            contentLength = parseInt(cr.split('/')[1] || '0', 10);
+          }
+        }
+      }
+    } catch {
+      // Continue even if server blocks probe
+    }
+
+    let urlPath = cleanUrl.split('?')[0];
+    let rawFileName = urlPath.split('/').filter(Boolean).pop() || 'media_stream.mp4';
+    if (!rawFileName.includes('.')) {
+      rawFileName += contentType.includes('audio') ? '.mp3' : '.mp4';
+    }
     const ext = rawFileName.split('.').pop()?.toLowerCase() || 'mp4';
-    const isAudio = ext === 'mp3' || ext === 'm4a' || ext === 'aac' || contentType.includes('audio');
+    const isAudio =
+      ext === 'mp3' || ext === 'm4a' || ext === 'aac' || ext === 'flac' || contentType.includes('audio');
+
+    let hostname = 'Direct Stream';
+    try {
+      hostname = new URL(cleanUrl).hostname;
+    } catch {}
 
     return {
       title: decodeURIComponent(rawFileName),
@@ -156,16 +293,21 @@ export class VideoDownloaderService {
         ? 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80'
         : 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=600&auto=format&fit=crop&q=80',
       duration: 'Direct Stream',
-      author: new URL(cleanUrl).hostname,
+      author: hostname,
       views: 'Direct Public Stream',
       platform: 'direct',
       qualities: [
         {
-          label: isAudio ? `Audio Stream (${ext.toUpperCase()})` : `Media Stream (${ext.toUpperCase()})`,
+          label: isAudio
+            ? `Audio Stream (${ext.toUpperCase()})`
+            : `Media Stream (${ext.toUpperCase()})`,
           format: isAudio ? 'mp3' : 'mp4',
           resolution: isAudio ? 'Audio Only' : 'Source Quality',
           type: isAudio ? 'audio' : 'video',
-          size: contentLength > 0 ? `${(contentLength / (1024 * 1024)).toFixed(1)} MB` : 'Direct Source',
+          size:
+            contentLength > 0
+              ? `${(contentLength / (1024 * 1024)).toFixed(1)} MB`
+              : 'Direct Source',
           url: cleanUrl,
         },
       ],
@@ -173,14 +315,14 @@ export class VideoDownloaderService {
   }
 
   /**
-   * Resumable file downloader supporting Web (fetch + streaming blob) and Mobile (expo-file-system)
+   * Resumable file downloader supporting Web and Mobile (expo-file-system)
    */
   static createDownloader(
     downloadUrl: string,
     targetFileName: string,
     onProgress: (percent: number, bytesWritten: number, totalBytes: number) => void
   ) {
-    const cleanFileName = targetFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const cleanFileName = targetFileName.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_');
     let isCancelled = false;
 
     // Web Implementation
@@ -196,8 +338,6 @@ export class VideoDownloaderService {
         fileUri: '',
         start: async () => {
           abortController = new AbortController();
-
-          // Try downloading via proxy or directly
           let response: Response;
           try {
             response = await fetch(proxyDownloadUrl, { signal: abortController.signal });
@@ -230,7 +370,10 @@ export class VideoDownloaderService {
             if (value) {
               chunks.push(value);
               bytesWritten += value.length;
-              const percent = totalBytes > 0 ? Math.min(100, Math.round((bytesWritten / totalBytes) * 100)) : -1;
+              const percent =
+                totalBytes > 0
+                  ? Math.min(100, Math.round((bytesWritten / totalBytes) * 100))
+                  : -1;
               onProgress(percent, bytesWritten, totalBytes);
             }
           }
@@ -244,7 +387,6 @@ export class VideoDownloaderService {
           });
           blobUrl = URL.createObjectURL(fullBlob);
 
-          // Trigger download to browser
           VideoDownloaderService.triggerBrowserDownload(blobUrl, cleanFileName);
 
           return {
@@ -279,7 +421,10 @@ export class VideoDownloaderService {
       fileUri,
       {
         headers: {
-          'User-Agent': 'eyoTools-Mobile-Downloader/1.0',
+          'User-Agent':
+            'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          Accept: '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
       },
       (downloadProgress) => {

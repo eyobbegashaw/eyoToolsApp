@@ -597,19 +597,6 @@ export const SteganographyScreen: React.FC = () => {
           </View>
         </View>
       )}
-
-      {/* LSB Algorithm Info Callout */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          {t.lsb_explanation}
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -619,7 +606,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {

@@ -599,21 +599,6 @@ export const QrReaderScreen: React.FC = () => {
           </View>
         )
       )}
-
-      {/* Info Callout */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          {language === 'am'
-            ? 'ከካሜራ እና ከምስል በቀጥታ የ QR ኮዶችን ያለ ምንም ኢንተርኔት 100% በስልክዎ ላይ ያነባል።'
-            : 'High-performance on-device QR matrix scanner runs 100% offline via hardware camera and computer vision.'}
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -623,7 +608,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {

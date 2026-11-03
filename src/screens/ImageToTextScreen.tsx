@@ -11,6 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import {
   ScanText,
@@ -72,6 +73,50 @@ export const ImageToTextScreen: React.FC = () => {
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to select image from gallery');
+    }
+  };
+
+  const handlePickPdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const file = result.assets[0];
+        setIsProcessing(true);
+        setProgress(15);
+        setStatusMessage(ocrLang === 'amh' ? 'PDF በመመርመር ላይ...' : 'Reading PDF document...');
+
+        let extraction = await PDFService.extractTextFromUri(file.uri, (p) => setProgress(p));
+        if (extraction.isScannedOnly) {
+          setStatusMessage(ocrLang === 'amh' ? 'በ OCR በማንበብ ላይ...' : 'Running OCR on scanned PDF pages...');
+          extraction = await PDFService.extractTextWithOCR(file.uri, ocrLang, (p, msg) => {
+            setProgress(p);
+            setStatusMessage(msg);
+          });
+        }
+
+        setImageUri(extraction.extractedImageUris?.[0] || null);
+        setExtractedText(extraction.text);
+        setConfidence(92);
+        setOcrEngine('eyoTools PDF Engine');
+        const baseName = (file.name || 'document').replace(/\.[^/.]+$/, '');
+        setExportFileName(`${baseName}_extracted.txt`);
+
+        await StorageService.addHistoryItem({
+          toolId: 'ocr',
+          title: file.name || 'PDF Document',
+          snippet: extraction.text.slice(0, 80) + '...',
+          fileSize: `${extraction.characterCount} chars`,
+          fileType: 'PDF',
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(t.error, e.message || 'Failed to process PDF document');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -285,6 +330,16 @@ export const ImageToTextScreen: React.FC = () => {
         </View>
 
         <TouchableOpacity
+          onPress={handlePickPdf}
+          style={[styles.sampleBtn, { backgroundColor: colors.cardSecondary, marginBottom: 8 }]}
+        >
+          <FileText size={16} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={[styles.sampleBtnText, { color: colors.primary }]}>
+            {t.select_pdf}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           onPress={handleLoadSample}
           style={[styles.sampleBtn, { backgroundColor: colors.cardSecondary }]}
         >
@@ -475,19 +530,6 @@ export const ImageToTextScreen: React.FC = () => {
           </View>
         </View>
       ) : null}
-
-      {/* Ethiopic Note */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          {t.ocr_ethiopic_note}
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -497,7 +539,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {

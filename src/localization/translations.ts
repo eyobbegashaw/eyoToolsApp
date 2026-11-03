@@ -117,6 +117,10 @@ export interface Translations {
   pages: string;
   extracted_preview: string;
   scanned_pdf_warning: string;
+  run_ocr_button: string;
+  extracting_ocr: string;
+  ocr_scanned_notice: string;
+  ocr_language_label: string;
   search_in_text: string;
   characters_count: string;
   words_count: string;
@@ -258,8 +262,8 @@ export const translations: Record<Language, Translations> = {
     about: 'About eyoTools',
     contact: 'Contact & Portfolio',
     developer: 'Developer Profile',
-    version: 'Version 1.0.0 (Android Mobile Edition)',
-    version_code: 'Build 100 • React Native & Expo Engine',
+    version: 'Version 1.0.0',
+    version_code: 'v1.0.0',
     cs_students: 'For Students, By a  Student',
     welcome: 'Welcome to eyoTools Mobile',
     welcome_sub: 'Your Ultimate Toolkit on Android',
@@ -296,7 +300,7 @@ export const translations: Record<Language, Translations> = {
     extracted_text: 'Extracted Content',
     ready: 'Ready',
     warning: 'Notice',
-    offline_badge: '100% Offline Capable',
+    offline_badge: 'Offline Capable',
     online_badge: 'Requires Internet',
     mobile_native_info: 'Runs locally using Android Native APIs / On-Device engines.',
     export_project: 'Export React Native Project',
@@ -354,6 +358,10 @@ export const translations: Record<Language, Translations> = {
     pages: 'Total Pages',
     extracted_preview: 'Extracted Content',
     scanned_pdf_warning: 'Notice: This PDF contains image-only scanned pages without embedded text layers. Use "Image to Text (OCR)" for scanned documents.',
+    run_ocr_button: 'Extract Text with OCR',
+    extracting_ocr: 'Running OCR character recognition...',
+    ocr_scanned_notice: 'This document appears to be a scanned image PDF. You can directly run OCR below to extract all text.',
+    ocr_language_label: 'OCR Language',
     search_in_text: 'Filter & Search within extracted text...',
     characters_count: 'Characters',
     words_count: 'Words',
@@ -450,15 +458,15 @@ export const translations: Record<Language, Translations> = {
 
     bg_title: 'Background Remover',
     remove_bg: 'Remove Background',
-    removing_bg: 'Calculating background color variance and alpha masking...',
+    removing_bg: 'Isolating foreground subject and removing background...',
     bg_threshold: 'Color Threshold Tolerance',
     original_preview: 'Original Image',
     result_preview: 'Transparent Result',
-    bg_algorithm_info: 'Uses the original eyoTools four-corner color sampling algorithm with edge smoothing to isolate primary subjects cleanly.',
+    bg_algorithm_info: 'Isolates the foreground subject and generates clean alpha transparency.',
 
     about_dev_name: 'Dn Eyob Begashaw',
     about_dev_role: 'Computer Science Student & Software Engineer',
-    about_dev_bio: 'Developer and creator of eyoTools. Built with passion to provide an all-in-one suite of essential utilities for Computer Science students and professionals.',
+    about_dev_bio: 'Developer and creator of eyoTools. Built with passion to provide an all-in-one suite of essential utilities.',
     about_dev_ethiopia: 'Addis Ababa, Ethiopia',
     portfolio: 'Portfolio Website',
     github: 'GitHub Profile',
@@ -485,8 +493,8 @@ export const translations: Record<Language, Translations> = {
     about: 'ስለ ኢዮ መሳሪያዎች',
     contact: 'መገናኛ እና ፖርትፎሊዮ',
     developer: 'የገንቢ መረጃ',
-    version: 'እትም 1.0.0 (የአንድሮይድ ሞባይል እትም)',
-    version_code: 'ቢልድ 100 • React Native & Expo ሞተር',
+    version: 'እትም 1.0.0',
+    version_code: 'v1.0.0',
     cs_students: 'ለተማሪዎች፣ ከተማሪ',
     welcome: 'እንኳን ወደ ኢዮ መሳሪያዎች በደህና መጡ',
     welcome_sub: 'የእርስዎ የተሟላ መሳሪያዎች ስብስብ በስልክዎ ላይ',
@@ -581,6 +589,10 @@ export const translations: Record<Language, Translations> = {
     pages: 'አጠቃላይ ገጾች',
     extracted_preview: 'የተወጣ ጽሁፍ ቅድመ እይታ',
     scanned_pdf_warning: 'ማሳሰቢያ፡ ይህ ሰነድ በስካነር የተነሳ የምስል PDF በመሆኑ ጽሁፍ የለውም። "ምስል ወደ ጽሁፍ (OCR)" መሳሪያን ይጠቀሙ።',
+    run_ocr_button: 'በ OCR ጽሁፉን አውጣ',
+    extracting_ocr: 'በ OCR ጽሁፍ በማንበብ ላይ...',
+    ocr_scanned_notice: 'ይህ ሰነድ በስካነር የተነሳ የምስል PDF ነው። ከታች ያለውን የ OCR ማወቂያ በመጠቀም ጽሁፉን ማውጣት ይችላሉ።',
+    ocr_language_label: 'የማወቂያ ቋንቋ',
     search_in_text: 'በተወጣው ጽሁፍ ውስጥ ፈልግ...',
     characters_count: 'የፊደላት ብዛት',
     words_count: 'የቃላት ብዛት',
@@ -681,11 +693,11 @@ export const translations: Record<Language, Translations> = {
     bg_threshold: 'የቀለም መቻቻል መጠን',
     original_preview: 'ዋናው ምስል',
     result_preview: 'ዳራው የተወገደለት ምስል',
-    bg_algorithm_info: 'የመጀመሪያውን የ eyoTools ባለ 4-ማዕዘን የቀለም ናሙና ስልተ-ቀመር በመጠቀም ዋናውን ምስል ለይቶ ያወጣል።',
+    bg_algorithm_info: 'ዋናውን ምስል በንጽህና ለይቶ በማውጣት ዳራውን በግልፅነት (transparency) ያስወግዳል።',
 
     about_dev_name: 'ዲ/ን እዮብ በጋሻው',
     about_dev_role: 'የኮምፒውተር ሳይንስ ተማሪ እና የሶፍትዌር መሐንዲስ',
-    about_dev_bio: 'የ eyoTools መተግበሪያ ፈጣሪ እና ገንቢ። ለኮምፒውተር ሳይንስ ተማሪዎች እና ባለሙያዎች ጠቃሚ የሆኑ መሳሪያዎችን በአንድ ላይ ለማቅረብ የተሰራ።',
+    about_dev_bio: 'የ eyoTools መተግበሪያ ፈጣሪ እና ገንቢ። ጠቃሚ የሆኑ መሳሪያዎችን በአንድ ላይ ለማቅረብ የተሰራ።',
     about_dev_ethiopia: 'አዲስ አበባ፣ ኢትዮጵያ',
     portfolio: 'የግል ፖርትፎሊዮ ድረ-ገጽ',
     github: 'የ GitHub ገጽ',

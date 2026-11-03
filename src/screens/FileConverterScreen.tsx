@@ -9,8 +9,10 @@ import {
   Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowRightLeft,
+  ArrowRight,
   FileText,
   Presentation,
   FileCode,
@@ -20,6 +22,7 @@ import {
   Sparkles,
   RefreshCw,
   Info,
+  ShieldCheck,
 } from 'lucide-react-native';
 import {
   DocumentConverterService,
@@ -287,7 +290,7 @@ export const FileConverterScreen: React.FC = () => {
             <Text style={[styles.badgeText, { color: colors.primary }]}>
               {getSourceBadge()}
             </Text>
-            <Text style={[styles.arrowText, { color: colors.textMuted }]}>➔</Text>
+            <ArrowRight size={14} color={colors.textMuted} style={{ marginHorizontal: 6 }} />
             <Text style={[styles.badgeText, { color: '#10b981' }]}>
               {getTargetBadge()}
             </Text>
@@ -419,19 +422,6 @@ export const FileConverterScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Info Notice */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          100% On-Device Document Engine. No cloud uploads. Your private documents, assignments, and slides remain securely on your device and pls again check the file after conversion.
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -441,7 +431,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {

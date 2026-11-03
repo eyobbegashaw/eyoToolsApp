@@ -104,12 +104,13 @@ async function fetchTtsMp3Web(
   text: string,
   lang: 'en' | 'am'
 ): Promise<Uint8Array | null> {
-  if (typeof window === 'undefined') return null;
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
 
+  const origin = window.location ? window.location.origin : '';
   const candidateEndpoints = [
     `http://localhost:3001/api/tts?text=${encodeURIComponent(text.slice(0, 4500))}&lang=${lang}`,
-    `${window.location.origin}/api/tts?text=${encodeURIComponent(text.slice(0, 4500))}&lang=${lang}`,
-  ];
+    origin ? `${origin}/api/tts?text=${encodeURIComponent(text.slice(0, 4500))}&lang=${lang}` : '',
+  ].filter(Boolean);
 
   for (const endpoint of candidateEndpoints) {
     try {
@@ -138,7 +139,7 @@ export class AudioExportService {
   static getTtsAudioUrl(text: string, language: 'en-US' | 'am-ET'): string {
     const ttsLang = language === 'am-ET' ? 'am' : 'en';
     const cleanText = text.trim().slice(0, 4500);
-    if (typeof window !== 'undefined') {
+    if (Platform.OS === 'web') {
       return `http://localhost:3001/api/tts?text=${encodeURIComponent(cleanText)}&lang=${ttsLang}`;
     }
     const chunks = splitTextIntoTtsChunks(cleanText, 180);

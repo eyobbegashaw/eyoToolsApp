@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Linking,
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import {
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   Sliders,
   Check,
+  ExternalLink,
 } from 'lucide-react-native';
 import { VideoDownloaderService } from '../services/videoDownloaderService';
 import { StorageService } from '../services/storageService';
@@ -100,6 +102,23 @@ export const VideoDownloaderScreen: React.FC = () => {
 
   const handleDownload = async () => {
     if (!videoInfo || !selectedQuality) return;
+
+    if (videoInfo.platform === 'youtube' || selectedQuality.url.includes('youtube.com') || selectedQuality.url.includes('youtu.be')) {
+      Alert.alert(
+        language === 'am' ? 'የዩቲዩብ የህግ ገደብ' : 'YouTube Terms of Service Notice',
+        language === 'am'
+          ? 'በጉግል እና ዩቲዩብ የህግ ደንብ መሰረት ቪዲዮዎችን በቀጥታ እንደ ፋይል ማውረድ አይፈቀድም። ቪዲዮውን በዩቲዩብ መተግበሪያ ወይም በብራውዘር በቀጥታ ማጫወት ይችላሉ።'
+          : 'YouTube restricts automated direct media downloads. You can watch or stream directly in the YouTube app or browser, or use TikTok and direct media streams for file downloads.',
+        [
+          { text: language === 'am' ? 'እሺ' : 'OK' },
+          {
+            text: language === 'am' ? 'በዩቲዩብ ክፈት' : 'Open in YouTube',
+            onPress: () => Linking.openURL(selectedQuality.url || url),
+          },
+        ]
+      );
+      return;
+    }
 
     setIsDownloading(true);
     setProgress(0);
@@ -466,22 +485,52 @@ export const VideoDownloaderScreen: React.FC = () => {
           </View>
 
           {/* Download Action & Progress */}
-          {!isDownloading && !downloadSuccess && (
-            <TouchableOpacity
-              onPress={handleDownload}
-              style={[styles.downloadBtn, { backgroundColor: '#dc2626' }]}
+          {videoInfo.platform === 'youtube' ? (
+            <View
+              style={[
+                styles.youtubeNoticeBox,
+                { backgroundColor: 'rgba(220, 38, 38, 0.08)', borderColor: '#dc2626' },
+              ]}
             >
-              <Download size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.downloadBtnText}>
-                {selectedQuality?.format === 'mp3'
-                  ? language === 'am'
-                    ? 'ድምጽ አውርድ (MP3)'
-                    : 'Download Audio (MP3)'
-                  : language === 'am'
-                  ? 'ቪዲዮ አውርድ (MP4)'
-                  : 'Download Video (MP4)'}
+              <View style={styles.youtubeNoticeRow}>
+                <Info size={16} color="#dc2626" style={{ marginRight: 8 }} />
+                <Text style={[styles.youtubeNoticeTitle, { color: colors.text }]}>
+                  {language === 'am' ? 'የዩቲዩብ የህግ ገደብ' : 'YouTube Terms of Service Notice'}
+                </Text>
+              </View>
+              <Text style={[styles.youtubeNoticeDesc, { color: colors.textSecondary }]}>
+                {language === 'am'
+                  ? 'በጉግል እና በዩቲዩብ ደንብ መሰረት ቪዲዮዎችን በቀጥታ ወደ ስልክ ማውረድ አይፈቀድም። ቪዲዮውን በዩቲዩብ መተግበሪያ ወይም በብራውዘር በቀጥታ ማጫወት ይችላሉ።'
+                  : 'Direct video file saving from YouTube is restricted per YouTube and Google Play policies. You can watch or stream directly in the YouTube app or browser, or use TikTok and direct media streams for file downloads.'}
               </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(selectedQuality?.url || url)}
+                style={[styles.openYoutubeBtn, { backgroundColor: '#dc2626' }]}
+              >
+                <ExternalLink size={16} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.openYoutubeBtnText}>
+                  {language === 'am' ? 'በዩቲዩብ መተግበሪያ ክፈት' : 'Watch in YouTube App / Browser'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            !isDownloading && !downloadSuccess && (
+              <TouchableOpacity
+                onPress={handleDownload}
+                style={[styles.downloadBtn, { backgroundColor: '#dc2626' }]}
+              >
+                <Download size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.downloadBtnText}>
+                  {selectedQuality?.format === 'mp3'
+                    ? language === 'am'
+                      ? 'ድምጽ አውርድ (MP3)'
+                      : 'Download Audio (MP3)'
+                    : language === 'am'
+                    ? 'ቪዲዮ አውርድ (MP4)'
+                    : 'Download Video (MP4)'}
+                </Text>
+              </TouchableOpacity>
+            )
           )}
 
           {isDownloading && (
@@ -551,26 +600,6 @@ export const VideoDownloaderScreen: React.FC = () => {
           )}
         </View>
       )}
-
-      {/* Legal & Terms Notice Callout */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
-        ]}
-      >
-        <Info size={15} color={colors.cyan} style={{ marginRight: 8, marginTop: 2 }} />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.infoTitle, { color: colors.text }]}>
-            {t.video_notice_title}
-          </Text>
-          <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-            {language === 'am'
-              ? 'YouTube እና TikTok ቪዲዮዎችን ከዋተርማርክ ነጻ ሆነው ወይም በድምጽ (MP3) ጥራት በቀጥታ ማውረድ ይችላሉ።'
-              : 'Direct audio/video streaming extracts high-resolution files. TikTok videos are extracted without watermarks.'}
-          </Text>
-        </View>
-      </View>
     </ScrollView>
   );
 };
@@ -580,7 +609,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {
@@ -635,6 +665,40 @@ const styles = StyleSheet.create({
   analyzeBtnText: {
     color: '#fff',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  youtubeNoticeBox: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  youtubeNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  youtubeNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  youtubeNoticeDesc: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  openYoutubeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  openYoutubeBtnText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '700',
   },
   sampleSection: {

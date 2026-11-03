@@ -23,6 +23,9 @@ import {
   Globe,
   Download,
   Music,
+  FileText,
+  X,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { PDFService } from '../services/pdfService';
 import { AudioExportService } from '../services/audioExportService';
@@ -43,6 +46,16 @@ export const PdfToAudioScreen: React.FC = () => {
   );
   const [audioFileName, setAudioFileName] = useState<string>('document_audio.mp3');
   const [isExportingAudio, setIsExportingAudio] = useState<boolean>(false);
+
+  const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
+  const [extractProgress, setExtractProgress] = useState<number>(0);
+  const [extractStatus, setExtractStatus] = useState<string>('');
+  const [loadedFileName, setLoadedFileName] = useState<string>('');
+  const [loadedFileSize, setLoadedFileSize] = useState<string>('');
+
+  const MAX_PDF_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB max limit
+  const MAX_PDF_SIZE_LABEL = '25 MB';
+  const MAX_READABLE_CHARS = 10000;
 
   const webAudioRef = useRef<any>(null);
   const [femaleVoiceId, setFemaleVoiceId] = useState<string | undefined>(undefined);
@@ -170,6 +183,8 @@ export const PdfToAudioScreen: React.FC = () => {
   };
 
   const handlePickDocument = async () => {
+    if (isExtractingPdf) return;
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf'],
@@ -178,10 +193,71 @@ export const PdfToAudioScreen: React.FC = () => {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const file = result.assets[0];
-        const res = await PDFService.extractTextFromUri(file.uri);
-        if (res.text) {
-          setTextToRead(res.text.slice(0, 3000));
+
+        // 1. Check 25 MB limit
+        if (file.size && file.size > MAX_PDF_SIZE_BYTES) {
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          Alert.alert(
+            t.warning || 'File Limit Exceeded',
+            `The selected PDF is ${sizeMb} MB. Maximum supported file limit is ${MAX_PDF_SIZE_LABEL} to ensure stable on-device performance.`
+          );
+          return;
         }
+
+        setIsExtractingPdf(true);
+        setExtractProgress(15);
+        setExtractStatus(language === 'am' ? 'PDF በመመርመር ላይ...' : 'Reading PDF document...');
+
+        let res = await PDFService.extractTextFromUri(file.uri, (p) => {
+          setExtractProgress(Math.min(p, 90));
+        });
+
+        // 2. Handle scanned PDF without digital text layer via OCR fallback
+        if (res.isScannedOnly) {
+          setExtractStatus(
+            language === 'am'
+              ? 'በ OCR ጽሁፍ በማንበብ ላይ...'
+              : 'Scanned PDF detected. Running OCR...'
+          );
+          res = await PDFService.extractTextWithOCR(
+            file.uri,
+            ttsLang.startsWith('am') ? 'amh' : 'eng',
+            (p, msg) => {
+              setExtractProgress(p);
+              setExtractStatus(msg);
+            }
+          );
+        }
+
+        const rawText = res.text.trim();
+        if (!rawText) {
+          Alert.alert(
+            t.warning || 'Notice',
+            language === 'am'
+              ? 'ከሰነዱ ውስጥ ሊነበብ የሚችል ጽሁፍ አልተገኘም።'
+              : 'No readable text could be extracted from this PDF.'
+          );
+          return;
+        }
+
+        // 3. Set text to read (up to 10,000 characters)
+        if (rawText.length > MAX_READABLE_CHARS) {
+          setTextToRead(rawText.slice(0, MAX_READABLE_CHARS));
+          Alert.alert(
+            language === 'am' ? 'ማሳሰቢያ' : 'Notice',
+            language === 'am'
+              ? 'ለድምጽ ማጫወቻው ምቹ እንዲሆን የመጀመሪያዎቹ 10,000 ፊደላት ተጭነዋል።'
+              : `Loaded first ${MAX_READABLE_CHARS.toLocaleString()} characters from document for optimal speech synthesis.`
+          );
+        } else {
+          setTextToRead(rawText);
+        }
+
+        setLoadedFileName(file.name || 'document.pdf');
+        setLoadedFileSize(
+          file.size ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : 'PDF'
+        );
+
         if (file.name) {
           const baseName = file.name.replace(/\.[^/.]+$/, '');
           setAudioFileName(`${baseName}_audio.mp3`);
@@ -189,6 +265,10 @@ export const PdfToAudioScreen: React.FC = () => {
       }
     } catch (e: any) {
       Alert.alert(t.error, e.message || 'Failed to read PDF document');
+    } finally {
+      setIsExtractingPdf(false);
+      setExtractProgress(0);
+      setExtractStatus('');
     }
   };
 
@@ -261,6 +341,45 @@ export const PdfToAudioScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Loaded Document Banner */}
+        {loadedFileName ? (
+          <View
+            style={[
+              styles.loadedFileBanner,
+              { backgroundColor: colors.cardSecondary, borderColor: colors.cardBorder },
+            ]}
+          >
+            <View style={styles.loadedFileInfo}>
+              <FileText size={15} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text numberOfLines={1} style={[styles.loadedFileName, { color: colors.text }]}>
+                {loadedFileName}
+              </Text>
+              <Text style={[styles.loadedFileMeta, { color: colors.textMuted }]}>
+                ({loadedFileSize})
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setLoadedFileName('');
+                setLoadedFileSize('');
+              }}
+              style={styles.clearFileBtn}
+            >
+              <X size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* Extraction Progress Banner */}
+        {isExtractingPdf && (
+          <View style={[styles.extractingBanner, { backgroundColor: colors.cardSecondary }]}>
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={[styles.extractingText, { color: colors.text }]}>
+              {extractStatus || 'Reading PDF document...'} ({extractProgress}%)
+            </Text>
+          </View>
+        )}
+
         {/* Text Input to Read */}
         <TextInput
           multiline
@@ -278,19 +397,41 @@ export const PdfToAudioScreen: React.FC = () => {
           ]}
         />
 
+        {/* Character Counter & Limits */}
+        <View style={styles.charCountRow}>
+          <Text style={[styles.charCountText, { color: colors.textMuted }]}>
+            {textToRead.length.toLocaleString()} / {MAX_READABLE_CHARS.toLocaleString()} chars
+          </Text>
+          <View style={styles.limitBadge}>
+            <ShieldCheck size={11} color={colors.primary} style={{ marginRight: 4 }} />
+            <Text style={[styles.limitBadgeText, { color: colors.textMuted }]}>
+              PDF limit: {MAX_PDF_SIZE_LABEL}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.inputActionsRow}>
           <TouchableOpacity
             onPress={handlePickDocument}
-            style={[styles.smallBtn, { backgroundColor: colors.cardSecondary }]}
+            disabled={isExtractingPdf}
+            style={[
+              styles.smallBtn,
+              { backgroundColor: colors.cardSecondary, opacity: isExtractingPdf ? 0.6 : 1 },
+            ]}
           >
-            <Upload size={14} color={colors.text} style={{ marginRight: 5 }} />
+            {isExtractingPdf ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 5 }} />
+            ) : (
+              <Upload size={14} color={colors.text} style={{ marginRight: 5 }} />
+            )}
             <Text style={[styles.smallBtnText, { color: colors.text }]}>
-              {t.choose_pdf}
+              {isExtractingPdf ? 'Extracting...' : t.choose_pdf}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleLoadSample}
+            disabled={isExtractingPdf}
             style={[styles.smallBtn, { backgroundColor: colors.cardSecondary }]}
           >
             <Sparkles size={14} color="#f59e0b" style={{ marginRight: 5 }} />
@@ -511,17 +652,6 @@ export const PdfToAudioScreen: React.FC = () => {
           )}
         </TouchableOpacity>
       </View>
-
-      {/* Info Callouts */}
-      <View
-        style={[
-          styles.infoCard,
-          { backgroundColor: 'rgba(2, 132, 199, 0.08)', borderColor: 'rgba(2, 132, 199, 0.2)' },
-        ]}
-      >
-        <Info size={15} color="#0284c7" style={{ marginRight: 8, marginTop: 2 }} />
-        <Text style={styles.infoText}>{t.amharic_voice_note}</Text>
-      </View>
     </ScrollView>
   );
 };
@@ -531,7 +661,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
+    paddingTop: 6,
     paddingBottom: 28,
   },
   headerCard: {
@@ -724,5 +855,64 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     flex: 1,
+  },
+  loadedFileBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  loadedFileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  loadedFileName: {
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: '65%',
+  },
+  loadedFileMeta: {
+    fontSize: 11,
+    marginLeft: 6,
+  },
+  clearFileBtn: {
+    padding: 4,
+  },
+  extractingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  extractingText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  charCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  charCountText: {
+    fontSize: 11,
+  },
+  limitBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  limitBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

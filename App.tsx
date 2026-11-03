@@ -6,6 +6,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import * as Font from 'expo-font';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { HeaderBar } from './src/components/HeaderBar';
 import { BottomNavigation } from './src/components/BottomNavigation';
@@ -37,6 +38,35 @@ const MainAppContent: React.FC = () => {
   const [screenStack, setScreenStack] = useState<ScreenId[]>(['home']);
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          'Ubuntu-Regular': require('./assets/fonts/Ubuntu-Regular.ttf'),
+          'Ubuntu-Medium': require('./assets/fonts/Ubuntu-Medium.ttf'),
+          'Ubuntu-Bold': require('./assets/fonts/Ubuntu-Bold.ttf'),
+          'NotoSerifEthiopic-Regular': require('./assets/fonts/NotoSerifEthiopic-Regular.ttf'),
+          'NotoSerifEthiopic-Bold': require('./assets/fonts/NotoSerifEthiopic-Bold.ttf'),
+        });
+      } catch (e) {
+        console.warn('Font load note:', e);
+      }
+    }
+    loadFonts();
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const linkId = 'eyotools-google-fonts';
+      if (!document.getElementById(linkId)) {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href =
+          'https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=Noto+Serif+Ethiopic:wght@400;700&display=swap';
+        document.head.appendChild(link);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     StorageService.getHistory().then(setHistoryItems);

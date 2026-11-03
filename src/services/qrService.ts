@@ -14,27 +14,111 @@ export interface QrOptions {
 
 export class QrService {
   /**
-   * Generate high-resolution PNG data URL for QR code
+   * Generate clean high-resolution (512x512) PNG data URL for QR code.
+   * Works purely in JavaScript across both Web and native Mobile (Android / iOS)
+   * without needing document.createElement('canvas').
    */
   static async generateQrDataUrl(
     value: string,
     options: QrOptions = {}
   ): Promise<string> {
     const text = value && value.trim() ? value : 'eyoTools';
-    const fg = options.fgColor || '#000000';
-    const bg = options.bgColor || '#ffffff';
+    const fgHex = options.fgColor || '#000000';
+    const bgHex = options.bgColor || '#ffffff';
     const ecl = options.errorLevel || 'M';
-    const width = options.size || 512;
+    const targetSize = options.size || 512;
 
-    return await QRCodeLib.toDataURL(text, {
-      width,
-      margin: 2,
-      errorCorrectionLevel: ecl,
-      color: {
-        dark: fg,
-        light: bg,
-      },
-    });
+    try {
+      // 1. Generate QR matrix in pure JavaScript
+      const qr = QRCodeLib.create(text, { errorCorrectionLevel: ecl });
+      const modSize = qr.modules.size;
+      const margin = 4;
+      const totalMods = modSize + margin * 2;
+      const cellSize = Math.max(1, Math.floor(targetSize / totalMods));
+      const realSize = cellSize * totalMods;
+
+      const parseHex = (hex: string): [number, number, number, number] => {
+        const clean = hex.replace('#', '');
+        if (clean.length === 3) {
+          return [
+            parseInt(clean[0] + clean[0], 16),
+            parseInt(clean[1] + clean[1], 16),
+            parseInt(clean[2] + clean[2], 16),
+            255,
+          ];
+        }
+        return [
+          parseInt(clean.slice(0, 2), 16) || 0,
+          parseInt(clean.slice(2, 4), 16) || 0,
+          parseInt(clean.slice(4, 6), 16) || 0,
+          255,
+        ];
+      };
+
+      const fg = parseHex(fgHex);
+      const bg = parseHex(bgHex);
+
+      // 2. Render pixel grid
+      const rgba = new Uint8Array(realSize * realSize * 4);
+
+      for (let my = 0; my < totalMods; my++) {
+        for (let mx = 0; mx < totalMods; mx++) {
+          const qrx = mx - margin;
+          const qry = my - margin;
+          const isDark =
+            qrx >= 0 && qrx < modSize && qry >= 0 && qry < modSize
+              ? (qr.modules as any).get(qry, qrx) === 1
+              : false;
+          const color = isDark ? fg : bg;
+
+          for (let py = 0; py < cellSize; py++) {
+            const y = my * cellSize + py;
+            const rowOffset = y * realSize * 4;
+            for (let px = 0; px < cellSize; px++) {
+              const x = mx * cellSize + px;
+              const idx = rowOffset + x * 4;
+              rgba[idx] = color[0];
+              rgba[idx + 1] = color[1];
+              rgba[idx + 2] = color[2];
+              rgba[idx + 3] = color[3];
+            }
+          }
+        }
+      }
+
+      // 3. Encode to standard PNG format using pure JavaScript (fast-png)
+      const fastPng = require('fast-png');
+      const pngBytes: Uint8Array = fastPng.encode({
+        width: realSize,
+        height: realSize,
+        data: rgba,
+      });
+
+      // 4. Convert Uint8Array to base64 Data URL
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < pngBytes.length; i += chunkSize) {
+        const chunk = pngBytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk as any);
+      }
+      const base64 =
+        typeof btoa !== 'undefined'
+          ? btoa(binary)
+          : Buffer.from(binary, 'binary').toString('base64');
+
+      return `data:image/png;base64,${base64}`;
+    } catch (err: any) {
+      console.warn('Pure JS QR PNG generation error, falling back:', err);
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        return await QRCodeLib.toDataURL(text, {
+          width: targetSize,
+          margin: 4,
+          errorCorrectionLevel: ecl,
+          color: { dark: fgHex, light: bgHex },
+        });
+      }
+      throw new Error(err.message || 'Failed to render QR PNG');
+    }
   }
 
   /**
